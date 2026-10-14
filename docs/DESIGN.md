@@ -136,9 +136,9 @@ Physically based materials with relief and roughness: varnished parquet 0.35, ti
 
 Each room gets an environment map captured once from its centre after the bake; glossy materials of that room use it. Lamp highlights come from these maps.
 
-### 4.4. Mirror
+### 4.4. Mirrors
 
-The hallway mirror is a real reflection (`Reflector`), rendered at reduced resolution and only while on screen. It's needed for "Extra in the mirror": that figure lives on a layer only the mirror sees. On low quality the mirror is frosted glass.
+Three mirrors are real reflections (`Reflector`): the hallway mirror, the small one over the washbasin and the middle panel of the bedroom dresser (its turned wings keep the room's environment map). Each is rendered at reduced resolution, only while on screen and only while the player stands in a room it can be seen from, and shows only the rooms around it plus players and anomalies. The hallway one is needed for "Extra in the mirror": that figure lives on a layer only that mirror sees. On low quality there are no reflections: the hallway mirror is frosted glass, the other two are plain glossy glass.
 
 ### 4.5. Post-processing
 
@@ -158,8 +158,8 @@ Rusty brown, thick at the floor and thinning towards the ceiling, computed in th
 
 | Mode | What's on |
 |---|---|
-| High | environment maps, mirror, post-processing, render scale up to 1.5 |
-| Low | baked light, materials without environment maps, frosted mirror, no post-processing, render scale 1 |
+| High | environment maps, mirrors, post-processing, render scale up to 1.5 |
+| Low | baked light, materials without environment maps, mirrors without reflections, no post-processing, render scale 1 |
 
 Switched with **G** or in the Esc menu; the choice is remembered. Budget: at most 300 draw calls. **F3** shows frame rate, draw calls, triangles and bake time.
 

@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { Reflector } from 'three/addons/objects/Reflector.js';
+import type { Reflector } from 'three/addons/objects/Reflector.js';
 import { ROOM_BY_ID } from '../../../shared/map.ts';
 import { rng } from '../../textures.ts';
 import { LAYERS } from '../layers.ts';
 import { Kit, cabinet, keep } from '../furniture.ts';
+import { realMirror } from '../mirror.ts';
 import type { Updater } from './index.ts';
 
 export interface HallProps {
@@ -75,31 +76,13 @@ export function furnishHall(root: THREE.Object3D, players: number, updaters: Upd
   for (const sx of [-1, 1]) k.box(receiver, 0.055, 0.04, 0.06, plastic, sx * 0.09, -0.03, 0);
   keep(receiver);
 
-  // Mirror on the west wall (docs/DESIGN.md, 4.4): a real reflection, rendered only while it is in
-  // view and only of the rooms it can show (world/index.ts, LAYERS). In low quality only the murky
-  // glass under it is left.
+  // Mirror on the west wall: a real reflection (mirror.ts) over murky glass.
   const mg = k.at(r.x0, 5.4, 'px', 0.95);
   k.box(mg, 0.62, 0.92, 0.025, wood, 0, 0, 0.0125);
   const glass = k.box(mg, 0.54, 0.84, 0.006, k.custom('murkyGlass', { color: 0x6c7476, roughness: 0.25, metalness: 0.2 }), 0, 0.04, 0.028);
   keep(glass);
-  const scale = Math.min(devicePixelRatio, 1.5) * 0.5;
-  const reflector = new Reflector(new THREE.PlaneGeometry(0.54, 0.84), {
-    textureWidth: Math.round(innerWidth * scale),
-    textureHeight: Math.round(innerHeight * scale),
-    clipBias: 0.003,
-  });
-  // the colour is overlaid on the reflection: 0.5 (linear) leaves it as it is; old silvering is a little darker
-  (reflector.material as THREE.ShaderMaterial).uniforms.color.value.setRGB(0.42, 0.42, 0.41);
-  // the reflection sees the near rooms (not `far`) and what only a mirror shows
-  const reflected = reflector.getReflectionCamera.bind(reflector);
-  reflector.getReflectionCamera = (camera) => {
-    const c = reflected(camera);
-    c.layers.set(0);
-    c.layers.enable(LAYERS.mirror);
-    return c;
-  };
+  const reflector = realMirror(0.54, 0.84, LAYERS.hallView, ['hall', 'passage', 'corridor'], [LAYERS.mirror]);
   reflector.position.set(0, 0.46, 0.032);
-  reflector.userData.noEnv = true;
   mg.add(reflector);
   const centre = new THREE.Vector3(r.x0 + 0.032, 1.41, 5.4);
 

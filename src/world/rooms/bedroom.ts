@@ -3,7 +3,10 @@ import { ROOM_BY_ID } from '../../../shared/map.ts';
 import { RUGS } from '../../../shared/furniture.ts';
 import { rng } from '../../textures.ts';
 import { flat } from '../geometry.ts';
+import type { Reflector } from 'three/addons/objects/Reflector.js';
 import { Kit, cabinet, cloth, keep, legs, radiator } from '../furniture.ts';
+import { LAYERS } from '../layers.ts';
+import { realMirror } from '../mirror.ts';
 import { surfaces } from '../surfaces.ts';
 import { carpet } from '../pictures.ts';
 
@@ -15,6 +18,8 @@ export interface BedroomProps {
   wardrobeDoor: THREE.Group;
   /** Jars of pickles on the loggia shelf. */
   jars: THREE.Group;
+  /** The real reflection on the dresser's middle mirror, in high quality (mirror.ts). */
+  reflector: Reflector;
 }
 
 /** Bedroom (double bed, cot, wardrobe, dresser with a triple mirror) and the loggia. */
@@ -66,6 +71,10 @@ export function furnishBedroom(root: THREE.Object3D): BedroomProps {
   cabinet(k, dr.g, dr.w, dr.h, dr.d, veneer, 2);
   const mirror = k.custom('mirror', { color: 0xdfe4e6, roughness: 0.02, metalness: 1 });
   k.box(dr.g, 0.5, 0.8, 0.02, mirror, 0, dr.h + 0.02, -dr.d / 2 + 0.06);
+  // the middle one reflects for real; the wings, turned towards it, keep the room's environment map
+  const reflector = realMirror(0.5, 0.8, LAYERS.bedroomView, ['bedroom', 'living', 'loggia']);
+  reflector.position.set(0, dr.h + 0.42, -dr.d / 2 + 0.0715);
+  dr.g.add(reflector);
   for (const s of [-1, 1]) {
     const wing = k.box(dr.g, 0.24, 0.65, 0.02, mirror, s * 0.36, dr.h + 0.05, -dr.d / 2 + 0.1);
     wing.rotation.y = -s * 0.5;
@@ -125,5 +134,5 @@ export function furnishBedroom(root: THREE.Object3D): BedroomProps {
     for (const x of [18.42, lr.x1 - 0.04]) l.box(l.at(x, z, 'pz', 2.26), 0.04, 0.04, 0.04, l.mat('iron'), 0, 0, 0);
   }
 
-  return { bedspread, pillows, cot: c.g, wardrobeDoor, jars };
+  return { bedspread, pillows, cot: c.g, wardrobeDoor, jars, reflector };
 }

@@ -1,14 +1,18 @@
 import * as THREE from 'three';
 import { ROOM_BY_ID } from '../../../shared/map.ts';
+import type { Reflector } from 'three/addons/objects/Reflector.js';
 import { Kit, keep } from '../furniture.ts';
+import { LAYERS } from '../layers.ts';
+import { realMirror } from '../mirror.ts';
 
 export interface BathProps {
   /** Dark water filling the tub to the brim; hidden. */
   water: THREE.Mesh;
   /** The shower curtain, bunched at the head of the tub; scale.z draws it. */
   curtain: THREE.Mesh;
-  /** Small mirror over the washbasin. */
+  /** Small mirror over the washbasin, and its real reflection in high quality (mirror.ts). */
   mirror: THREE.Mesh;
+  reflector: Reflector;
   /** Cistern of the toilet, high on the wall. */
   cistern: THREE.Group;
 }
@@ -50,6 +54,9 @@ export function furnishBath(root: THREE.Object3D): BathProps {
   const mg = k.at(23.65, ROOM_BY_ID.bath.rect.z1, 'nz', 1.25);
   const mirror = k.box(mg, 0.36, 0.46, 0.006, k.custom('mirror', { color: 0xdfe4e6, roughness: 0.02, metalness: 1 }), 0, 0, 0.006);
   keep(mirror);
+  const reflector = realMirror(0.36, 0.46, LAYERS.bathView, ['bath', 'passage']);
+  reflector.position.set(0, 0.23, 0.0095);
+  mg.add(reflector);
 
   // washing machine: a round-shouldered white tub with a lid and a dial
   const washer = k.place('washer', 'pz');
@@ -76,5 +83,5 @@ export function furnishBath(root: THREE.Object3D): BathProps {
   const roll = w.at(23.55, ROOM_BY_ID.wc.rect.z0, 'pz', 0.75);
   w.rod(roll, 0.055, 0.1, w.mat('paper'), 0, 0, 0.07, 14);
 
-  return { water, curtain, mirror, cistern };
+  return { water, curtain, mirror, reflector, cistern };
 }

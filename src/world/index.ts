@@ -61,8 +61,16 @@ export interface Emitter {
   gain?: number;
 }
 
-/** What the hall mirror can show, with a margin: the hall, the passage, the floor corridor by the door. */
-const MIRROR_VIEW = new THREE.Box3(new THREE.Vector3(22.4, -0.5, 0), new THREE.Vector3(26, 3, 10.3));
+/**
+ * What each real mirror can show, with a margin. The hall's: the hall, the passage, the floor
+ * corridor by the door; the bathroom's: the bathroom and the passage; the bedroom's: the bedroom,
+ * the loggia and the window between them.
+ */
+const MIRROR_VIEWS: [THREE.Box3, number][] = [
+  [new THREE.Box3(new THREE.Vector3(22.4, -0.5, 0), new THREE.Vector3(26, 3, 10.3)), LAYERS.hallView],
+  [new THREE.Box3(new THREE.Vector3(22.2, -0.5, 6.1), new THREE.Vector3(25.7, 3, 10.3)), LAYERS.bathView],
+  [new THREE.Box3(new THREE.Vector3(18.0, -0.5, 10.2), new THREE.Vector3(22.6, 3, 16.8)), LAYERS.bedroomView],
+];
 
 export interface World {
   group: THREE.Group;
@@ -89,7 +97,7 @@ export interface World {
   props: Props;
   /** Light at chest height over a floor point, for people and anything else that moves (lighting.ts, useBaked). */
   probe(x: number, z: number, out: Probe): Probe;
-  /** High quality shows the hall mirror's real reflection; low leaves murky glass (and `props.hall.mirror.ghost`, if any). */
+  /** High quality shows the mirrors' real reflections (mirror.ts); low leaves the glass under them (and `props.hall.mirror.ghost`, if any). */
   setQuality(high: boolean): void;
   dispose(): void;
 }
@@ -263,11 +271,15 @@ export function buildWorld(cycle: number, players: number, won = false): World {
   group.updateMatrixWorld(true);
   const bakeMs = bake(group, lamps, stairLamps);
   merge(group);
-  // the mirror draws only what it can show
+  // a mirror draws only what it can show
   const bounds = new THREE.Box3();
   group.traverse((o) => {
-    if (o instanceof THREE.Mesh && !bounds.setFromObject(o).intersectsBox(MIRROR_VIEW)) o.layers.set(LAYERS.far);
+    if (!(o instanceof THREE.Mesh) || o.userData.mirror) return;
+    bounds.setFromObject(o);
+    o.layers.set(LAYERS.far);
+    for (const [view, layer] of MIRROR_VIEWS) if (bounds.intersectsBox(view)) o.layers.enable(layer);
   });
+  const mirrors = [props.hall.mirror.reflector, props.bath.reflector, props.bedroom.reflector];
   const light = lightContext(lamps, stairLamps);
   const chest = new THREE.Vector3();
 
@@ -292,12 +304,12 @@ export function buildWorld(cycle: number, players: number, won = false): World {
       return v ? gather(v.space, v.lamps, [], chest, null, out) : gather(light.cell, light.cellLamps, light.windows, chest, null, out);
     },
     setQuality(high) {
+      for (const r of mirrors) r.visible = high;
       const m = props.hall.mirror;
-      m.reflector.visible = high;
       if (m.ghost) m.ghost.visible = !high;
     },
     dispose() {
-      props.hall.mirror.reflector.dispose();
+      for (const r of mirrors) r.dispose();
       const textures = new Set<THREE.Texture>();
       const materials = new Set<THREE.Material>();
       group.traverse((o) => {
