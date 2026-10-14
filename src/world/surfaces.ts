@@ -181,10 +181,15 @@ export const surfaces = {
       for (let i = 0; i < 3; i++) {
         let x = r() * s;
         let y = r() * s;
-        g.beginPath();
-        g.moveTo(x, y);
-        for (let k = 0; k < 10; k++) g.lineTo((x += (r() - 0.5) * 50), (y += (r() - 0.5) * 50));
-        g.stroke();
+        const crack = [[x, y]];
+        for (let k = 0; k < 10; k++) crack.push([(x += (r() - 0.5) * 50), (y += (r() - 0.5) * 50)]);
+        // drawn in all nine copies, so a crack crossing the edge goes on from the other side
+        for (const dx of [-s, 0, s])
+          for (const dy of [-s, 0, s]) {
+            g.beginPath();
+            for (const [cx, cy] of crack) g.lineTo(cx + dx, cy + dy);
+            g.stroke();
+          }
       }
     }),
 
@@ -199,15 +204,14 @@ export const surfaces = {
       }
       const w = s / 8;
       for (let i = 0; i < 8; i++) {
-        let y = -r() * s * 0.5;
-        while (y < s) {
-          const len = s * (0.3 + r() * 0.3);
+        for (const [y, len] of column(r, s, -r() * s * 0.5, 0.3, 0.3)) {
           const k = 0.85 + r() * 0.25;
-          g.fillStyle = `rgb(${150 * k},${102 * k},${62 * k})`;
-          g.fillRect(i * w, y, w, len);
-          g.fillStyle = 'rgba(60,35,15,0.5)';
-          g.fillRect(i * w, y, w, 2);
-          y += len;
+          for (const dy of [0, s]) {
+            g.fillStyle = `rgb(${150 * k},${102 * k},${62 * k})`;
+            g.fillRect(i * w, y + dy, w, len);
+            g.fillStyle = 'rgba(60,35,15,0.5)';
+            g.fillRect(i * w, y + dy, w, 2);
+          }
         }
         g.fillStyle = 'rgba(60,35,15,0.5)';
         g.fillRect(i * w, 0, 2, s);
@@ -526,20 +530,35 @@ function paint(key: string, color: string, seed: number) {
   });
 }
 
+/**
+ * A column of boards that closes on itself over the texture: from `y0` (at most 0) down to exactly
+ * `y0 + s`, lengths `min..min+spread` of the texture. Drawn again at `y + s`, the boards cut at the
+ * top edge go on at the bottom, so the texture tiles without a line across the floor.
+ */
+function column(r: () => number, s: number, y0: number, min: number, spread: number) {
+  const out: [number, number][] = [];
+  for (let y = y0; y < y0 + s - 1; ) {
+    let len = s * (min + r() * spread);
+    // the last board takes what is left rather than leave a sliver
+    if (y0 + s - (y + len) < s * min * 0.6) len = y0 + s - y;
+    out.push([y, len]);
+    y += len;
+  }
+  return out;
+}
+
 function boards(g: G, l: 'c' | 'h' | 'r', s: number, seed: number, n: number, [cr, cg, cb]: number[], gloss: number) {
   const r = rng(seed);
   const w = s / n;
   fill(g, l === 'c' ? '#3a2412' : l === 'h' ? grey(60) : rough(0.7), s);
-  for (let i = 0; i < n; i++) {
-    let y = -r() * s;
-    while (y < s) {
-      const len = s * (0.5 + r() * 0.5);
+  for (let i = 0; i < n; i++)
+    for (const [y, len] of column(r, s, -r() * s, 0.5, 0.5)) {
       const k = 0.85 + r() * 0.25;
-      g.fillStyle = l === 'c' ? `rgb(${cr * k},${cg * k},${cb * k})` : l === 'h' ? grey(175) : rough(gloss + r() * 0.1);
-      g.fillRect(i * w + 1, y + 1, w - 2, len - 2);
-      y += len;
+      // drawn in every layer, so the three layers lay out the same boards
+      const shine = r();
+      g.fillStyle = l === 'c' ? `rgb(${cr * k},${cg * k},${cb * k})` : l === 'h' ? grey(175) : rough(gloss + shine * 0.1);
+      for (const dy of [0, s]) g.fillRect(i * w + 1, y + dy + 1, w - 2, len - 2);
     }
-  }
   if (l === 'c') woodGrain(g, s, seed + 1, 0.12);
 }
 
