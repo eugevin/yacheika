@@ -139,14 +139,15 @@ function doorwayShell(parent: THREE.Object3D, d: Doorway, skin: Skin, casing: TH
     wallPiece(lintel, far, 'pz', 0, -d.width / 2, d.width / 2, d.height, VEST_H);
   }
 
+  // the threshold: covers the line where one room's floor meets the other's, a little over each.
+  // An exit's stops at the wall's far face: the vestibule is baked apart and has to match the other
+  // one. Sunk half a centimetre, so its underside doesn't lie in the floor's plane
+  const over = far ? 0 : THRESHOLD_OVER;
+  const sill = box(d.width, THRESHOLD_H + 0.005, depth + THRESHOLD_OVER + over, casing);
+  sill.position.set(0, (THRESHOLD_H - 0.005) / 2, (THRESHOLD_OVER - depth - over) / 2);
+  g.add(sill);
+
   if (d.kind === 'opening') return;
-  if (!far) {
-    // the threshold: covers the line where one room's floor meets the other's, a little over each.
-    // Sunk half a centimetre, so its underside doesn't lie in the floor's plane
-    const sill = box(d.width, THRESHOLD_H + 0.005, depth + 2 * THRESHOLD_OVER, casing);
-    sill.position.set(0, (THRESHOLD_H - 0.005) / 2, -depth / 2);
-    g.add(sill);
-  }
   const thick = d.kind === 'hermo' ? 0.04 : 0.015;
   const cw = d.kind === 'hermo' ? 0.1 : CASING_W;
   // an exit's frame only shows on the room side: on the other it would sit inside the vestibule walls
