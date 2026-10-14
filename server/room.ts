@@ -232,12 +232,13 @@ export class Room {
   private roll(): Anomaly | null {
     if (Math.random() >= ANOMALY_CHANCE) return null;
     const tier = maxDifficulty(this.cycle);
-    const pool = ANOMALIES.filter((a) => a.tier <= tier && !this.recent.includes(a.id));
+    const ids = [...this.players.keys()];
+    const pool = ANOMALIES.filter((a) => a.tier <= tier && (a.players ?? 1) <= ids.length && !this.recent.includes(a.id));
     if (pool.length === 0) return null;
     const a = rand(pool);
     this.recent = [...this.recent, a.id].slice(-RECENT_LIMIT);
-    const ids = [...this.players.keys()];
-    const only = Math.random() < privateChance(this.cycle, ids.length) ? rand(ids) : null;
+    const alone = a.only === 'always' || (a.only !== 'never' && Math.random() < privateChance(this.cycle, ids.length));
+    const only = alone ? rand(ids) : null;
     return { id: a.id, name: a.name, seed: Math.floor(Math.random() * 2 ** 31), only };
   }
 

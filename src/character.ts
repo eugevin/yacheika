@@ -490,6 +490,7 @@ export class Character {
 
     this.talk += (talk - this.talk) * Math.min(1, dt * 15);
     b[BONE.head].rotation.x = THREE.MathUtils.clamp(pitch, -0.7, 0.7) * 0.8 + Math.sin(t * 13) * 0.05 * this.talk;
+    b[BONE.head].rotation.y = this.headYaw;
     this.mat.emissiveIntensity = this.talk * 0.7;
   }
 

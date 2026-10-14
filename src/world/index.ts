@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DOORWAYS, ROOM_BY_ID, ROOMS, VESTIBULES, leafKey, leafRect, onSide, stairDepth, type Exit, type FloorKind, type RoomId, type Side, type WallKind } from '../../shared/map.ts';
 import { FURNITURE, type Piece } from '../../shared/furniture.ts';
+import type { Look } from '../character.ts';
 import { canvasTexture, signTexture } from '../textures.ts';
 import { buildExterior, galleryMaterial } from './exterior.ts';
 import { bakedMaterial, type Spec } from './furniture.ts';
@@ -72,6 +73,14 @@ const MIRROR_VIEWS: [THREE.Box3, number][] = [
   [new THREE.Box3(new THREE.Vector3(18.0, -0.5, 10.2), new THREE.Vector3(22.6, 3, 16.8)), LAYERS.bedroomView],
 ];
 
+/** What an anomaly does to the other players' avatars for one cycle (avatars.ts); gone with the world. */
+export interface AvatarOverrides {
+  /** Teammates whose heads turn to us, whatever they actually look at. */
+  gaze: Set<number>;
+  /** Teammates who look different this cycle. */
+  look: Map<number, Look>;
+}
+
 export interface World {
   group: THREE.Group;
   lamps: Lamp[];
@@ -89,6 +98,7 @@ export interface World {
   emitters: Emitter[];
   /** Footsteps that echo ours from behind. */
   follower: boolean;
+  avatars: AvatarOverrides;
   /** Per-frame hooks added by the world itself and by anomalies. */
   updaters: ((t: number, dt: number, camera: THREE.Camera) => void)[];
   /** How long baking the light took, in ms (0 when it came from the cache). */
@@ -97,6 +107,12 @@ export interface World {
   props: Props;
   /** Light at chest height over a floor point, for people and anything else that moves (lighting.ts, useBaked). */
   probe(x: number, z: number, out: Probe): Probe;
+  /**
+   * Nothing solid between an eye and a point (walls, the wall above a doorway, furniture), as the
+   * bake sees it; the point itself may lie on a surface. False for an eye outside the cell's rooms
+   * and for a line that leaves them. For who can see what (gaze.ts).
+   */
+  clear(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean;
   /** High quality shows the mirrors' real reflections (mirror.ts); low leaves the glass under them (and `props.hall.mirror.ghost`, if any). */
   setQuality(high: boolean): void;
   dispose(): void;
@@ -299,6 +315,7 @@ export function buildWorld(cycle: number, players: number, won = false): World {
     silent: false,
     emitters: [],
     follower: false,
+    avatars: { gaze: new Set(), look: new Map() },
     updaters,
     bakeMs,
     props,
@@ -308,6 +325,7 @@ export function buildWorld(cycle: number, players: number, won = false): World {
       chest.y += stairDepth(x, z);
       return v ? gather(v.space, v.lamps, [], chest, null, out) : gather(light.cell, light.cellLamps, light.windows, chest, null, out);
     },
+    clear: (ax, ay, az, bx, by, bz) => light.cell.open(ax, ay, az) && light.cell.clear(ax, ay, az, bx, by, bz),
     setQuality(high) {
       for (const r of mirrors) r.visible = high;
       const m = props.hall.mirror;

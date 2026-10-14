@@ -2,12 +2,21 @@ import * as THREE from 'three';
 import { EYE_H, exitAt, loopPose, stairDepth } from '../shared/map.ts';
 import type { PlayerInfo } from '../shared/protocol.ts';
 import { Character } from './character.ts';
+import type { Eye } from './gaze.ts';
 import { STEP_LEN } from './player.ts';
+import type { AvatarOverrides } from './world/index.ts';
 
 const MARK_LIFE = 4;
+/** How far a head turned to us by an anomaly may go: further than a neck should. */
+const GAZE_TURN = 2;
+
+const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 interface Avatar {
   info: PlayerInfo;
+  /** The resident as they joined. */
+  own: Character;
+  /** The one shown: `own`, or a stand-in for one cycle (AvatarOverrides.look). */
   char: Character;
   target: THREE.Vector3;
   yaw: number;
@@ -24,6 +33,8 @@ export class Avatars {
   readonly root = new THREE.Group();
   private list = new Map<number, Avatar>();
   private marks: { obj: THREE.Group; age: number }[] = [];
+  /** Heads that turn to us this cycle (AvatarOverrides.gaze). */
+  private gaze = new Set<number>();
   /** Called when another player takes a step, derived from how far their avatar moved. */
   onStep: ((x: number, z: number, run: boolean) => void) | null = null;
 
@@ -32,7 +43,7 @@ export class Avatars {
     const char = new Character(info);
     char.root.visible = false;
     this.root.add(char.root);
-    this.list.set(info.id, { info, char, target: new THREE.Vector3(), yaw: 0, pitch: 0, talk: 0, seen: false, stride: 0 });
+    this.list.set(info.id, { info, own: char, char, target: new THREE.Vector3(), yaw: 0, pitch: 0, talk: 0, seen: false, stride: 0 });
   }
 
   remove(id: number) {
@@ -40,6 +51,7 @@ export class Avatars {
     if (!a) return;
     this.root.remove(a.char.root);
     a.char.dispose();
+    if (a.own !== a.char) a.own.dispose();
     this.list.delete(id);
   }
 
@@ -90,6 +102,41 @@ export class Avatars {
     }
   }
 
+  /**
+   * What the new cycle's anomaly does to the avatars, or nothing: the stand-ins of the last one go
+   * and the residents come back as they joined.
+   */
+  override(o: AvatarOverrides | null) {
+    this.gaze = new Set(o?.gaze);
+    for (const [id, a] of this.list) {
+      const look = o?.look.get(id);
+      if (a.char === a.own && !look) {
+        a.char.headYaw = 0;
+        continue;
+      }
+      const next = look ? new Character(look) : a.own;
+      next.root.position.copy(a.char.root.position);
+      next.root.rotation.y = a.char.root.rotation.y;
+      next.root.visible = a.char.root.visible;
+      next.headYaw = 0;
+      this.root.remove(a.char.root);
+      if (a.char !== a.own) a.char.dispose();
+      this.root.add(next.root);
+      a.char = next;
+    }
+  }
+
+  /** Where each teammate looks from, for anomalies that care who sees what (gaze.ts). */
+  eyes() {
+    const list: Eye[] = [];
+    for (const a of this.list.values()) {
+      if (!a.char.root.visible) continue;
+      const p = a.char.root.position;
+      list.push({ x: p.x, y: p.y + EYE_H, z: p.z, yaw: a.char.root.rotation.y, pitch: a.pitch });
+    }
+    return list;
+  }
+
   /** Head positions for spatial voice. */
   heads() {
     const m = new Map<number, THREE.Vector3>();
@@ -117,7 +164,8 @@ export class Avatars {
     for (const a of this.list.values()) if (a.char.root.visible) probe(a.char.root.position.x, a.char.root.position.z, a.char.probe);
   }
 
-  update(dt: number, t: number) {
+  /** `eye`: the camera, for heads that turn to it. */
+  update(dt: number, t: number, eye: THREE.Vector3) {
     const k = 1 - Math.exp(-dt * 12);
     for (const a of this.list.values()) {
       const pos = a.char.root.position;
@@ -133,7 +181,16 @@ export class Avatars {
       let d = a.yaw - a.char.root.rotation.y;
       d = Math.atan2(Math.sin(d), Math.cos(d));
       a.char.root.rotation.y += d * k;
-      a.char.animate(dt, t, moved, a.pitch, a.talk);
+      let pitch = a.pitch;
+      if (this.gaze.has(a.info.id)) {
+        // the head turns to us whatever the body does, and keeps up as we move
+        const head = pos.y + EYE_H;
+        const turn = Math.atan2(-(eye.x - pos.x), -(eye.z - pos.z)) - a.char.root.rotation.y;
+        const want = THREE.MathUtils.clamp(wrap(turn), -GAZE_TURN, GAZE_TURN);
+        a.char.headYaw += (want - a.char.headYaw) * Math.min(1, dt * 4);
+        pitch = Math.atan2(eye.y - head, Math.hypot(eye.x - pos.x, eye.z - pos.z));
+      }
+      a.char.animate(dt, t, moved, pitch, a.talk);
     }
     this.marks = this.marks.filter((m) => {
       m.age += dt;

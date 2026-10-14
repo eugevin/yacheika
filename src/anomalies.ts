@@ -3,6 +3,7 @@ import { ANOMALIES } from '../shared/anomalies.ts';
 import { FURNITURE } from '../shared/furniture.ts';
 import { ROOM_BY_ID, ROOMS, onSide, type RoomId } from '../shared/map.ts';
 import { MASKS, OUTFITS } from '../shared/masks.ts';
+import type { PlayerInfo } from '../shared/protocol.ts';
 import { Character, type Look } from './character.ts';
 import { canvasTexture, rng } from './textures.ts';
 import { darkenWindows } from './world/exterior.ts';
@@ -16,10 +17,10 @@ import { REVEAL } from './world/shell.ts';
 import { darkenYard, glowMaterial, outdoorMaterial, panelTexture, windowAcross } from './world/yard.ts';
 
 type Rand = () => number;
-/** Who is in the room, for anomalies that copy a player. */
+/** Who is in the room, for anomalies that copy or single out a player: their ids and looks. */
 export interface People {
-  self: Look;
-  others: Look[];
+  self: PlayerInfo;
+  others: PlayerInfo[];
 }
 type Apply = (w: World, r: Rand, cycle: number, people: People) => void;
 

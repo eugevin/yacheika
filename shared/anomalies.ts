@@ -7,6 +7,13 @@ export interface AnomalyInfo {
   id: string;
   name: string;
   tier: 1 | 2 | 3;
+  /** Fewest players it makes sense with: one that copies or watches a teammate needs one. 1 by default. */
+  players?: number;
+  /**
+   * 'always': it only ever happens on one screen; 'never': it needs everyone to see it. Otherwise
+   * it is shown to one player by chance (shared/rules.ts, privateChance).
+   */
+  only?: 'always' | 'never';
 }
 
 export const ANOMALIES: AnomalyInfo[] = [

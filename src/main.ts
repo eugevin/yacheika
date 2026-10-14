@@ -118,6 +118,7 @@ function toggleQuality() {
 }
 
 const walker = new Walker(camera);
+const eyeAt = new THREE.Vector3();
 
 // --- settings, in the duty log ---
 const SETTINGS = {
@@ -569,7 +570,7 @@ function enterCycle(msg: Extract<ServerMsg, { t: 'cycle' }>, mode: 'loop' | 'sta
   world = buildWorld(msg.cycle, 1 + avatars.all.length, msg.phase === 'won');
   walker.stairs = world.won;
   run = msg.run ?? null;
-  const people: People = { self: { name: ui.name.value.trim() || 'вы', color: myColor(), mask: myMask, outfit: myOutfit, flat: myFlat }, others: avatars.all };
+  const people: People = { self: { id: myId, name: ui.name.value.trim() || 'вы', color: myColor(), mask: myMask, outfit: myOutfit, flat: myFlat }, others: avatars.all };
   for (const a of msg.anomalies) applyAnomaly(world, a.id, a.seed, msg.cycle, people);
   scene.add(world.group);
   // Compile whatever new shaders the cell needs now, in the background where the browser can:
@@ -592,6 +593,7 @@ function enterCycle(msg: Extract<ServerMsg, { t: 'cycle' }>, mode: 'loop' | 'sta
     walker.place(spawn.x, spawn.z, spawn.yaw);
   }
   avatars.loop(mode);
+  avatars.override(world.avatars);
   shownCycleId = msg.cycleId;
   shownPhase = msg.phase;
   if (aftermath && msg.phase === 'playing') caption(`Самосбор окончен. ${aftermath}. Этаж ${msg.cycle}.`, 7);
@@ -621,6 +623,7 @@ function showFinal() {
 }
 
 // Dev-only console helpers for building anomalies: yacheika.preview('id'), yacheika.teleport(12, 1.5, -Math.PI / 2)
+let ghostAt: [x: number, z: number, yaw: number, pitch: number] | null = null;
 if (import.meta.env.DEV) {
   Object.assign(window, {
     yacheika: {
@@ -631,6 +634,8 @@ if (import.meta.env.DEV) {
         const { x, z, yaw, pitch } = walker;
         enterCycle({ t: 'cycle', phase: 'playing', cycle, goal: 10, cycleId: shownCycleId, anomalies: id ? [{ id, seed }] : [] });
         Object.assign(walker, { x, z, yaw, pitch });
+        // a new cycle hides avatars until their next position, and the ghost gets none from the server
+        if (ghostAt) avatars.setPos(-1, ...ghostAt);
       },
       /**
        * Sets off a samosbor in the shown cell; yacheika.preview() clears it. `at` skips ahead, in
@@ -667,6 +672,21 @@ if (import.meta.env.DEV) {
             world?.group.add(c.root);
           }),
         );
+      },
+      /**
+       * A teammate that isn't there, for building the anomalies that need one alone: stands at
+       * (x, z) looking along yaw and pitch, counts as a resident from the next yacheika.preview()
+       * on. Called again it moves; without arguments it goes. Id -1, so no server message touches it.
+       */
+      ghost(x?: number, z = 1.5, yaw = 0, pitch = 0) {
+        if (x === undefined) {
+          avatars.remove(-1);
+          ghostAt = null;
+          return;
+        }
+        if (!avatars.info(-1)) avatars.add({ id: -1, name: 'Призраков', color: '#9a8f7a', mask: 'gauze', outfit: 'quilted', flat: 48 });
+        ghostAt = [x, z, yaw, pitch];
+        avatars.setPos(-1, ...ghostAt);
       },
       where: () => ({ x: walker.x, z: walker.z, yaw: walker.yaw, cycleId: shownCycleId, fade }),
       /** Brightness of the lamps of one room (or of all), 0..1, until the next rebuild. */
@@ -707,7 +727,7 @@ renderer.setAnimationLoop((now) => {
   const active = !!document.pointerLockElement && document.activeElement !== ui.chatInput;
   walker.update(dt, active && !switching);
   if (voice) avatars.setTalk(voice.levels());
-  avatars.update(dt, t);
+  avatars.update(dt, t, camera.getWorldPosition(eyeAt));
   if (world) avatars.light(world.probe);
   if (ownBody) {
     ownBody.root.visible = world !== null;
