@@ -4,49 +4,11 @@ What the game still needs before 1.0.0, by version. `docs/DESIGN.md` describes t
 
 Versions are 0.x while the game is changing a lot. Each one ends with a group playtest, and its results may reshuffle the next.
 
-## 0.2 "Tambour"
-
-Fixes from the first playtest (5 players, about 30 minutes). The group had fun, and the Double turning its head after a player was the best moment. But **nobody understood that you have to stop in the middle of the Z-shaped tambour**: everyone walked on to the dead end, and the pass was lost.
-
-### The whole tambour counts as the exit
-
-An exit counts only in `ZONE`, the middle leg of the Z. A player who walks on past the corner is "on the way" again for the server; the countdown runs out and the group counts as split.
-
-- Any point past the blast door counts as the choice: the first leg, the middle, the dead end. `ZONE` stays only for the seamless transfer: whoever stands in it at the verdict moves on unnoticed, the rest go through a fade.
-- Once the whole group is in the tambours, wait 2–3 s before the verdict, so someone who has just crossed the threshold can reach the zone and loop seamlessly.
-- Hints: the countdown banner on entering a tambour («Ожидайте остальных в тамбуре»), a line in «ПАМЯТКА ЖИЛЬЦУ» («Дождаться всех жильцов в тамбуре»), a yellow-black hatched marking on the floor of the middle leg, symmetric under the 180° turn about `MID_CENTER` (verify with the pixel-exact loop test).
-
-### The majority decides, stragglers are carried along
-
-- When the countdown runs out with someone still in the cell, they don't break the pass: those who left decide, and the stragglers are carried into the next cycle through a fade with the caption «Гермодверь закрылась».
-- If players left through different exits, the majority decides; a tie is a samosbor. Stragglers in the cell are carried along either way.
-- Revisit `COUNTDOWN_MS` (20 s) afterwards.
-
-### Your own body
-
-- **Full first-person body.** Looking down shows your legs, arms and torso: the same `Character` other players see, in your outfit and protective gear, walking in step with the footsteps. The camera sits in the head, so the head and the mask stay hidden from your own view (but not from the mirror).
-- **Your reflection in the hallway mirror.** The mirror shows you, not only the others; "Extra in the mirror" then stands next to a familiar figure. It costs one draw call more on high quality.
-
-### A longer samosbor
-
-`SAMOSBOR_MS` is 6 s: the spoken warning doesn't finish before the screen goes dark. Make it 10 s with the warning said once, the fog, puffs, flicker and veil spread over that time, and a better siren: fuller, more like a real civil-defence siren.
-
-### Verdict log
-
-One server log line per verdict: floor, anomaly, private or not, correct or not, number of players. Shows which anomalies nobody notices and which are too obvious.
-
-### Cell fixes
-
-- **Floor seams.** Visible joins in the floor covering in several places: so far noticed in the corridor, the hallway and the bedroom.
-- **Wallpaper seams** in the hallway and the corridor.
-- **Wallpaper over doorways.** Wallpaper must not run onto the doorway reveals or onto the doors themselves.
-- **Thresholds.** Under a doorway the floor of one room meets the other's in a bare line: a threshold strip covers the joint.
-- **Real mirrors.** The small mirror over the washbasin and the bedroom dresser's mirror reflect like the hall one.
-- **Brightness back in range.** Measured from each room's centre in four directions (docs/DESIGN.md, 4.9), the same as in 0.1.0: the living room (0.19) and the loggia (0.22) are darker than 0.25, and the bedroom sconce overexposes 4% of the frame looking at the north wall.
-- **Clock hand.** The clock is missing a hand.
-- **Drip and clock sound position.** When the player turns their head quickly, the sound's position seems to update only when the next tick or drop plays; it has to follow the listener continuously, like the other sources.
-
 ## 0.3 "Morok"
+
+### Left from 0.2
+
+- Revisit `COUNTDOWN_MS` (20 s) after the 0.2 playtest: stragglers no longer break a pass, so it may be too long.
 
 ### Morok
 

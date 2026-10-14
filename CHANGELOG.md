@@ -2,6 +2,19 @@
 
 What each released version brought. Planned work is in `docs/ROADMAP.md`, the game as it is in `docs/DESIGN.md`.
 
+## 0.2.0 — 2026-10-15 "Tambour"
+
+Fixes from the first playtest, where nobody understood that you have to stop in the middle of the tambour.
+
+- **The whole tambour counts as the exit.** Any point past the blast door is the choice, the dead end included. Once the whole group is out, the verdict waits 2.5 s (unless everyone already stands in the exit zone), so the last one in can still loop seamlessly; anyone elsewhere goes on through a fade.
+- **The majority decides.** Those who left decide by majority, a tie is a samosbor; whoever is still in the cell when the countdown runs out is carried along with the caption «Гермодверь закрылась».
+- **Hints to wait:** «Ожидайте остальных в тамбуре» in the countdown banner, which counts down the last seconds once everyone is out; a new line in the memo; yellow and black hatching on the floor of the exit zone, pixel-exact through the loop.
+- **Your own body.** Looking down you see your chest with the ID card, your legs and your hands, in step with the footsteps; all three mirrors show your whole figure.
+- **Real mirrors** over the washbasin and on the bedroom dresser, not only in the hallway.
+- **Samosbor** of 10 s, the warning heard out in full; a new siren: a motor siren on the next block that winds up, wails and runs down, louder and fuller.
+- **The cell:** floor and wallpaper textures tile without seams; wallpaper stops at the doorways, which are lined like the door frames; thresholds under every door and at the tambours; a second hand on the pendulum clock; drips, clock and meter keep their place in space when you turn your head; the living room, loggia and bedroom brought back into the brightness range.
+- **Server:** one log line per verdict (floor, anomaly, private or not, the choice, right or wrong, how many were out), for balancing.
+
 ## 0.1.0 — 2026-10-14
 
 The first public build, the one played in the first group playtest at https://yacheika.eugevin.dev.
