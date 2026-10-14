@@ -4,7 +4,7 @@ A cooperative game about a group of residents walking the same cell (*yacheika*)
 
 ## 1. Rules
 
-- **A pass** counts when the whole group leaves through one exit: back into the tambour they came from, or forward into the tambour past the loggia. Any point past the blast door counts as the choice: the first leg, the middle or the dead end. Once the first player is in a tambour, the rest have `COUNTDOWN_MS` (20 s) to follow; when the whole group is in the tambours, the verdict waits `SETTLE_MS` (2.5 s) more, unless everyone already stands in the exit zone, so the last one in can reach it; the banner shows «Гермодверь закроется через 12 с · наверх 1 · вниз 2 · в пути 1», and those already in a tambour also see «Ожидайте остальных в тамбуре»; once everyone is out, it counts down the settle time instead. A split group counts as a mistake.
+- **A pass** is decided by those who left, by majority: back into the tambour they came from, or forward into the tambour past the loggia. Any point past the blast door counts as the choice: the first leg, the middle or the dead end. Once the first player is in a tambour, the rest have `COUNTDOWN_MS` (20 s) to follow; when the whole group is in the tambours, the verdict waits `SETTLE_MS` (2.5 s) more, unless everyone already stands in the exit zone, so the last one in can reach it; the banner shows «Гермодверь закроется через 12 с · наверх 1 · вниз 2 · в пути 1», and those already in a tambour also see «Ожидайте остальных в тамбуре»; once everyone is out, it counts down the settle time instead. A tie between the exits counts as a mistake. Whoever is still in the cell when the countdown runs out doesn't break the pass: they are carried into the next cycle behind a fade, with the caption «Гермодверь закрылась».
 - **The pass counter is the floor number**, stencilled on the landing wall: «ЭТАЖ 3». It is seen right on leaving the tambour. Nothing else marks a correct pass: no message, no sound.
 - **A mistake** sets off a samosbor (section 7) and the next cell starts from floor 0. What was missed is told in a caption afterwards: «Самосбор окончен. Отклонение: горит конфорка».
 - **Anomalies** (section 6) appear in `ANOMALY_CHANCE` (60%) of cycles, never in the first cycle of a run (so everyone sees what normal looks like), and never repeat within the last `RECENT_LIMIT` (6) cycles. The hardest tier allowed grows with the streak: tier 1 on floors 0–1, up to 2 on floors 2–4, up to 3 from floor 5.
@@ -317,7 +317,7 @@ About 6 seconds over the cell where the mistake happened, timed from the verdict
 
 ### 7.2. Server
 
-A wrong verdict or a split group moves the room into the `samosbor` phase for `SAMOSBOR_MS`. The cycle id stays, the anomaly is cleared, exits don't count. Then a new cycle from floor 0, always through a fade. A correct pass is instant and seamless.
+A wrong verdict or a tie between the exits moves the room into the `samosbor` phase for `SAMOSBOR_MS`. The cycle id stays, the anomaly is cleared, exits don't count. Then a new cycle from floor 0, always through a fade. A correct pass is instant and seamless.
 
 ### 7.3. Victory
 

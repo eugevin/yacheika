@@ -158,6 +158,8 @@ let posTimer = 0;
 let markTimer = 0;
 let messageTimer = 0;
 let captionTimer = 0;
+/** The group passed while we were still in the cell: we are carried along, and told why. */
+let left = false;
 /** The samosbor going on in the shown cell, if any. */
 let samosbor: Samosbor | null = null;
 let warned = false;
@@ -510,9 +512,9 @@ function handle(msg: ServerMsg) {
       } else if (!msg.correct) {
         const a = msg.anomaly;
         const seen = a?.seenBy ? `, его видел(а) только ${a.seenBy}` : '';
-        aftermath = `${msg.split ? 'Группа разделилась. ' : ''}${a ? `Отклонение: «${a.name}»${seen}` : 'Отклонений не было'}`;
+        aftermath = `${msg.split ? 'Группа разделилась поровну. ' : ''}${a ? `Отклонение: «${a.name}»${seen}` : 'Отклонений не было'}`;
         startSamosbor();
-      }
+      } else if (!tambourAt(walker.x, walker.z)) left = true;
       break;
     }
     case 'chat': {
@@ -583,6 +585,8 @@ function enterCycle(msg: Extract<ServerMsg, { t: 'cycle' }>, mode: 'loop' | 'sta
   shownCycleId = msg.cycleId;
   shownPhase = msg.phase;
   if (aftermath && msg.phase === 'playing') caption(`Самосбор окончен. ${aftermath}. Этаж ${msg.cycle}.`, 7);
+  else if (left && msg.phase === 'playing') caption('Гермодверь закрылась', 4);
+  left = false;
   aftermath = null;
   // joined (or reconnected) in the middle of one
   if (msg.phase === 'samosbor') startSamosbor();

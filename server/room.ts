@@ -242,15 +242,18 @@ export class Room {
   }
 
   /**
-   * A right choice starts the next cycle at once: players in the exit zones walk straight into it.
-   * A wrong one sets off a samosbor in the cell they are in; exits don't count while it lasts, and
-   * the cycle after it starts from floor 0 behind a fade.
+   * Those who left decide, by majority; a tie is a samosbor. Whoever is still in the cell doesn't
+   * break the pass: they are carried along behind a fade. A right choice starts the next cycle at
+   * once: players in the exit zones walk straight into it. A wrong one sets off a samosbor in the
+   * cell they are in; exits don't count while it lasts, and the cycle after it starts from floor 0
+   * behind a fade.
    */
   private resolve(choices: (Exit | null)[], now: number) {
-    const set = new Set(choices);
-    const split = set.size > 1;
-    const choice = split ? null : choices[0];
-    const correct = !split && (choice === 'back') === (this.anomaly !== null);
+    const forward = choices.filter((c) => c === 'forward').length;
+    const back = choices.filter((c) => c === 'back').length;
+    const split = forward === back;
+    const choice: Exit | null = split ? null : forward > back ? 'forward' : 'back';
+    const correct = choice !== null && (choice === 'back') === (this.anomaly !== null);
     this.cycle = correct ? this.cycle + 1 : 0;
     const won = this.cycle >= GOAL;
     const a = this.anomaly;
