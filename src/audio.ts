@@ -23,6 +23,8 @@ const SIREN_GAIN = 0.1;
 /** The siren's wail, Hz: the bottom of each swing and the top, where it settles once wound up. */
 const SIREN_LOW = 250;
 const SIREN_HIGH = 440;
+/** One swing of the wail, down and back up, seconds. */
+const SIREN_WAIL = 3.2;
 /** The announcer over the building's loudspeakers (the samosbor warning, the all clear). */
 const SPEAKER_GAIN = 0.25;
 /** How loud each kind of lamp hums, and how much it crackles. Only the kitchen tube really buzzes. */
@@ -289,7 +291,7 @@ export class Sound {
   /**
    * The samosbor (docs/DESIGN.md, 7.1), all scheduled at once from now (samosbor.ts, SAMOSBOR): a
    * motor siren on the roof of the next block winds up, wails up and down and runs down at the end;
-   * the warning over the loudspeakers, twice; wet squelching all round once the fog is thick;
+   * the warning over the loudspeakers; wet squelching all round once the fog is thick;
    * silence by the end. The cell's own background is switched off by the world (samosbor.ts).
    */
   samosbor() {
@@ -302,10 +304,10 @@ export class Sound {
     f.setValueAtTime(SIREN_LOW * 0.3, t);
     f.exponentialRampToValueAtTime(SIREN_HIGH, t + 3.5);
     let at = t + 3.5;
-    while (at + 4.6 < end - 2.8) {
-      f.exponentialRampToValueAtTime(SIREN_LOW, at + 2.4);
-      f.exponentialRampToValueAtTime(SIREN_HIGH, at + 4.6);
-      at += 4.6;
+    while (at + SIREN_WAIL < end - 2.8) {
+      f.exponentialRampToValueAtTime(SIREN_LOW, at + SIREN_WAIL * 0.53);
+      f.exponentialRampToValueAtTime(SIREN_HIGH, at + SIREN_WAIL);
+      at += SIREN_WAIL;
     }
     f.setValueAtTime(SIREN_HIGH, Math.max(at, end - 2.8));
     f.exponentialRampToValueAtTime(SIREN_LOW * 0.25, end - 0.2);
@@ -354,13 +356,12 @@ export class Sound {
     back.connect(this.gain(0.6)).connect(this.master);
     siren.connect(this.gain(0.25)).connect(this.room);
 
-    // the loudspeakers in every flat: a narrow band, under the siren; said twice, as they do
+    // the loudspeakers in every flat: a narrow band, under the siren
     const speaker = this.gain(SPEAKER_GAIN);
     speaker.connect(this.filter('highpass', 300, 0.7)).connect(this.filter('lowpass', 1600, 0.7)).connect(this.master);
     if ('speechSynthesis' in window) speechSynthesis.cancel();
     const words = ['внимание', 'самосбор', 'всем', 'жильцам', 'немедленно', 'укрыться', 'в', 'гермоблоках'];
-    for (const when of [SAMOSBOR.warn, SAMOSBOR.rewarn])
-      this.announce(t + when, words, speaker, 'Внимание! Самосбор! Всем жильцам немедленно укрыться в гермоблоках!', 0.15, 0.95, 0.6);
+    this.announce(t + SAMOSBOR.warn, words, speaker, 'Внимание! Самосбор! Всем жильцам немедленно укрыться в гермоблоках!', 0.15, 0.95, 0.6);
 
     // something wet, close by and all round, once the fog is thick
     const r = rng(4242);

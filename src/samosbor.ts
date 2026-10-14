@@ -13,11 +13,11 @@ import type { World } from './world/index.ts';
  * A samosbor (docs/DESIGN.md, 7.1, 4.7), played over the cell the group got wrong; the cell is
  * rebuilt afterwards, so nothing here is undone. Times are seconds from the verdict (SAMOSBOR):
  *   0.0  every lamp goes red and dim, the windows grey out, the siren winds up (audio.ts, Sound.samosbor);
- *   0.8  the warning on the loudspeakers (main.ts shows it), again at 8;
- *   3.0  rusty fog pours from the vents and from under the doors, and thickens: you see 40 m, then 2;
- *   8.0  squelching all round, the light stutters, the edges of the screen swim;
- *  13.0  the fog has covered the screen;
- *  14.2  the cell's background goes quiet, and the server starts the next cycle at 15 (SAMOSBOR_MS).
+ *   0.8  the warning on the loudspeakers (main.ts shows it);
+ *   2.5  rusty fog pours from the vents and from under the doors, and thickens: you see 40 m, then 2;
+ *   6.0  squelching all round, the light stutters, the edges of the screen swim;
+ *   8.8  the fog has covered the screen;
+ *   9.4  the cell's background goes quiet, and the server starts the next cycle at 10 (SAMOSBOR_MS).
  */
 const FOG_FROM = SAMOSBOR.fog;
 const FOG_FULL = SAMOSBOR.covered;

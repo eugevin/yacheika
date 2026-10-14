@@ -29,7 +29,7 @@ An exit counts only in `ZONE`, the middle leg of the Z. A player who walks on pa
 
 ### A longer samosbor
 
-`SAMOSBOR_MS` is 6 s: the spoken warning doesn't finish before the screen goes dark. Make it 15 s, the fog, puffs, flicker and veil spread over that time, and a better siren: fuller, more like a real civil-defence siren.
+`SAMOSBOR_MS` is 6 s: the spoken warning doesn't finish before the screen goes dark. Make it 10 s with the warning said once, the fog, puffs, flicker and veil spread over that time, and a better siren: fuller, more like a real civil-defence siren.
 
 ### Verdict log
 
