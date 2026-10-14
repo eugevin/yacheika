@@ -43,6 +43,41 @@ Real danger.
 - **A chaser**, like the running man in Exit 8: a figure that walks towards the group while not looked at; if it reaches a player, samosbor. Public, from floor 5.
 - **Darkness and a dynamo flashlight ("жучок")**: whole wings dark, a flashlight you pump with a key. No live lights in the scene, so the beam is a cone in the shared baked-light shader, one per player.
 
+## 0.6 "Interface"
+
+Every screen and control reworked as one interface: the lobby notice board, the duty log (Esc), the HUD, banners and captions, the end report and the final screen.
+
+- Buttons, menus and settings in one style, with the paper-and-typewriter look of the lobby carried through; clear states (hover, pressed, disabled).
+- Settings sorted into sections (graphics, sound, controls), each explained in a line.
+- Transitions between screens instead of hard cuts.
+- Readable everywhere: font sizes, contrast, nothing covering the view at the wrong moment.
+
+## 0.7 "Residents"
+
+Characters that look, move and handle better.
+
+- **Looks:** more shaped bodies, faces and gear than the current boxes, still one skinned mesh and one draw call per resident, lit by the bake through a probe.
+- **Animation:** a proper walk and run cycle, turning on the spot, idle shifting, the head and eyes following where a player looks, hands that do something (the marker, the door).
+- **Handling:** acceleration and stopping instead of instant speed, a calmer camera bob, smoother movement of other players between position updates.
+
+## 0.8 "Translation"
+
+The game in English, and any other language by adding one file.
+
+- All text in JSON locale files (`ru.json`, `en.json`): the interface, captions, banners, anomaly names on the verdict screen, and the text in the world (the memo, the floor stencil, notices, cards), which canvas textures draw from the locale.
+- The language picked in the lobby (the browser's language by default) and remembered; each player sees their own, the server sends ids, not text.
+- Spoken lines (the samosbor warning, the radio) in the locale's language, with the speech-synthesis voice for it.
+- Adding a language: copy a file, translate the strings, nothing else; a check that every file has every key.
+
+## 0.9 "Mobile"
+
+Playing on a phone or a tablet.
+
+- Touch controls: a virtual stick to walk, dragging to look, buttons for the marker, chat and the duty log.
+- Every screen laid out for small screens and both orientations.
+- A quality preset for weak devices; the bake has to fit its budget on a phone's CPU.
+- Voice chat and sound in mobile browsers (their autoplay and microphone rules).
+
 ## 1.0.0
 
 The game holds up for people who have never heard of it.
