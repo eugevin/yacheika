@@ -1,10 +1,11 @@
 import { ANOMALIES } from '../shared/anomalies.ts';
-import { exitAt, inCell, type Exit } from '../shared/map.ts';
+import { exitAt, inCell, tambourAt, type Exit } from '../shared/map.ts';
 import { FLATS, type MaskId, type OutfitId } from '../shared/masks.ts';
 import type { ClientMsg, Phase, PlayerInfo, RtcSignal, RunStats, ServerMsg } from '../shared/protocol.ts';
 import {
   ANOMALY_CHANCE,
   COUNTDOWN_MS,
+  SETTLE_MS,
   GOAL,
   MAX_PLAYERS,
   RECENT_LIMIT,
@@ -88,6 +89,8 @@ export class Room {
   private anomaly: Anomaly | null = null;
   private recent: string[] = [];
   private countdownEnd: number | null = null;
+  /** When the verdict is due once the whole group is in the vestibules. */
+  private settleEnd: number | null = null;
   /** When the samosbor that follows a wrong verdict is over. */
   private samosborEnd = 0;
   /** Tick time of the run's start, set on the first tick after it (tests pass their own clock). */
@@ -170,9 +173,11 @@ export class Room {
     this.startedAt ??= now;
 
     const choices = new Map<number, Exit | null>();
-    for (const p of this.players.values()) choices.set(p.id, p.posCycle === this.cycleId && p.entered ? exitAt(p.x, p.z) : null);
+    const counted = (p: Player) => p.posCycle === this.cycleId && p.entered;
+    for (const p of this.players.values()) choices.set(p.id, counted(p) ? tambourAt(p.x, p.z) : null);
     const out = [...choices.values()].filter((c) => c !== null);
     if (out.length === 0) {
+      this.settleEnd = null;
       if (this.countdownEnd !== null) {
         this.countdownEnd = null;
         this.broadcast({ t: 'countdown_off' });
@@ -180,7 +185,16 @@ export class Room {
       return;
     }
     this.countdownEnd ??= now + COUNTDOWN_MS;
-    if (out.length === choices.size || now >= this.countdownEnd) {
+    if (out.length === choices.size) {
+      // everyone is out: a moment for the last ones to reach the zones, unless they all stand there
+      this.settleEnd ??= now + SETTLE_MS;
+      const zoned = [...this.players.values()].every((p) => exitAt(p.x, p.z) !== null);
+      if (zoned || now >= this.settleEnd) {
+        this.resolve([...choices.values()], now);
+        return;
+      }
+    } else this.settleEnd = null;
+    if (now >= this.countdownEnd) {
       this.resolve([...choices.values()], now);
       return;
     }
@@ -208,6 +222,7 @@ export class Room {
     this.phase = 'playing';
     this.cycleId++;
     this.countdownEnd = null;
+    this.settleEnd = null;
     this.anomaly = first ? null : this.roll();
     for (const p of this.players.values()) p.entered = false;
     this.sendCycle();
@@ -264,6 +279,7 @@ export class Room {
     this.phase = 'won';
     this.cycleId++;
     this.countdownEnd = null;
+    this.settleEnd = null;
     this.anomaly = null;
     this.sendCycle();
   }

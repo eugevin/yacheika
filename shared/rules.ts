@@ -2,6 +2,12 @@
 export const GOAL = 10;
 /** Once the first player steps into an exit, the rest have this long to follow. */
 export const COUNTDOWN_MS = 20_000;
+/**
+ * Once the whole group is in the vestibules, the verdict waits this long (unless everyone already
+ * stands in a zone), so whoever has just crossed the threshold can walk on to the zone and loop
+ * seamlessly.
+ */
+export const SETTLE_MS = 2500;
 /** Chance that a cycle (other than the very first) hides an anomaly. */
 export const ANOMALY_CHANCE = 0.6;
 /** Anomalies seen in the last N cycles are not rolled again. */

@@ -123,9 +123,11 @@ export const MID = { u0: -0.8, u1: 6.8, v0: 3.4, v1: 5.0 };
 export const LEG2 = { u0: 5.2, u1: 6.8, v0: 5.0, v1: 8.4 };
 export const MID_CENTER = { u: 3, v: 4.2 };
 /**
- * Standing here counts as taking the exit. It is the part of MID from which neither the doorway
- * nor the dead end can be seen (sight past the LEG1 corner needs u < 1.6 * v / 3.4 - 0.8), so the
- * jump can't be noticed. Symmetric about MID_CENTER, like everything else.
+ * Whoever stands here when a cycle resolves is carried on seamlessly; anywhere else in a vestibule
+ * the exit still counts, but the next cycle comes behind a fade. It is the part of MID from which
+ * neither the doorway nor the dead end can be seen (sight past the LEG1 corner needs
+ * u < 1.6 * v / 3.4 - 0.8), so the jump can't be noticed. Symmetric about MID_CENTER, like
+ * everything else.
  */
 export const ZONE = { u0: 1.6, u1: 4.4, v0: 3.4, v1: 5.0 };
 
@@ -336,7 +338,16 @@ export function stairDepth(x: number, z: number) {
 
 const inLocal = (r: LocalRect, u: number, v: number) => u >= r.u0 && u <= r.u1 && v >= r.v0 && v <= r.v1;
 
-/** Which exit's zone a point stands in, if any. */
+/** Which exit's vestibule a point is in, if any: anywhere past the blast door counts as taking that exit. */
+export function tambourAt(x: number, z: number): Exit | null {
+  for (const exit of ['back', 'forward'] as const) {
+    const { u, v } = toLocal(VESTIBULES[exit], x, z);
+    if (v > 0 && [LEG1, MID, LEG2].some((r) => inLocal(r, u, v))) return exit;
+  }
+  return null;
+}
+
+/** Which exit's zone a point stands in, if any: from there the next cycle comes seamlessly. */
 export function exitAt(x: number, z: number): Exit | null {
   for (const exit of ['back', 'forward'] as const) {
     const { u, v } = toLocal(VESTIBULES[exit], x, z);
