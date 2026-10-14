@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ANOMALIES } from '../shared/anomalies.ts';
-import { STAIRS, exitAt, loopPose, spawnPoint, stairDepth } from '../shared/map.ts';
+import { STAIRS, exitAt, loopPose, spawnPoint, stairDepth, tambourAt } from '../shared/map.ts';
 import { MASKS, OUTFITS, isMask, isOutfit, type MaskId, type OutfitId } from '../shared/masks.ts';
 import type { Phase, RunStats, ServerMsg } from '../shared/protocol.ts';
 import { applyAnomaly, type People } from './anomalies.ts';
@@ -493,7 +493,9 @@ function handle(msg: ServerMsg) {
       const s = Math.ceil(msg.endsIn / 1000);
       const parts = [`наверх ${msg.forward}`, `вниз ${msg.back}`];
       if (msg.inside) parts.push(`в пути ${msg.inside}`);
-      banner(`Гермодверь закроется через ${s} с · ${parts.join(' · ')}`);
+      // whoever is out already is told to stay: walking on to the dead end is fine, coming back is not
+      const wait = tambourAt(walker.x, walker.z) ? 'Ожидайте остальных в тамбуре · ' : '';
+      banner(`${wait}Гермодверь закроется через ${s} с · ${parts.join(' · ')}`);
       break;
     }
     case 'countdown_off':

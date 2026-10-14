@@ -201,7 +201,8 @@ export class Room {
     const forward = out.filter((c) => c === 'forward').length;
     this.broadcast({
       t: 'countdown',
-      endsIn: this.countdownEnd - now,
+      // with everyone out, the door shuts when they have settled, not when the countdown runs out
+      endsIn: Math.min(this.countdownEnd, this.settleEnd ?? Infinity) - now,
       forward,
       back: out.length - forward,
       inside: choices.size - out.length,
