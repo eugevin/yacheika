@@ -103,15 +103,20 @@ function roomShell(parent: THREE.Object3D, room: Room, skin: Skin, holes: Hole[]
 function doorwayShell(parent: THREE.Object3D, d: Doorway, skin: Skin, casing: THREE.Material, leaves: Leaves, far: Skin | null) {
   const r = doorRect(d);
   const alongX = doorSide(d) === 'n' || doorSide(d) === 's';
+  // wallpaper stops at the edge of a doorway: a door's frame lines the whole reveal, and an opening
+  // in a papered room is lined the same way. Painted walls go on round the corner. Exits keep the
+  // vestibule's skin: both sides of the loop have to match.
+  const lined = !far && (d.kind !== 'opening' || !skin.dado);
+  const reveal: Skin = lined ? { ...skin, wall: casing, dado: undefined, base: null } : skin;
   if (alongX) {
-    wallPiece(parent, skin, 'px', r.x0, r.z0, r.z1, 0, d.height);
-    wallPiece(parent, skin, 'nx', r.x1, r.z0, r.z1, 0, d.height);
+    wallPiece(parent, reveal, 'px', r.x0, r.z0, r.z1, 0, d.height);
+    wallPiece(parent, reveal, 'nx', r.x1, r.z0, r.z1, 0, d.height);
   } else {
-    wallPiece(parent, skin, 'pz', r.z0, r.x0, r.x1, 0, d.height);
-    wallPiece(parent, skin, 'nz', r.z1, r.x0, r.x1, 0, d.height);
+    wallPiece(parent, reveal, 'pz', r.z0, r.x0, r.x1, 0, d.height);
+    wallPiece(parent, reveal, 'nz', r.z1, r.x0, r.x1, 0, d.height);
   }
   flat(parent, r.x0, r.z0, r.x1, r.z1, 0, true, skin.floor, skin.cell);
-  flat(parent, r.x0, r.z0, r.x1, r.z1, d.height, false, skin.wall, skin.cell);
+  flat(parent, r.x0, r.z0, r.x1, r.z1, d.height, false, reveal.wall, skin.cell);
 
   const sideA = doorSide(d);
   const depth = Math.min(r.x1 - r.x0, r.z1 - r.z0);
