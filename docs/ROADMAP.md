@@ -26,6 +26,16 @@ An exit counts only in `ZONE`, the middle leg of the Z. A player who walks on pa
 
 One server log line per verdict: floor, anomaly, private or not, correct or not, number of players. Shows which anomalies nobody notices and which are too obvious.
 
+### Cell fixes
+
+- **Floor seams.** Visible joins in the floor covering in several places: so far noticed in the corridor, the hallway and the bedroom.
+- **Wallpaper seams** in the hallway and the corridor.
+- **Wallpaper over doorways.** Wallpaper must not run onto the doorway reveals or onto the doors themselves.
+- **Proper windows.** All three windows built to the same quality as the hallway one.
+- **Hallway glass.** Seen from the floor corridor, the hallway glass shows black garbage.
+- **Clock hand.** The clock is missing a hand.
+- **Drip and clock sound position.** When the player turns their head quickly, the sound's position seems to update only when the next tick or drop plays; it has to follow the listener continuously, like the other sources.
+
 ## 0.3 "Morok"
 
 ### Morok
