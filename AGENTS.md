@@ -29,8 +29,8 @@ There's no test framework. Server logic is checked with Node scripts: they impor
   - `rules.ts`: balance constants: `GOAL`, anomaly chance, difficulty growth, private anomaly chance and `SAMOSBOR_MS`.
   - `protocol.ts`: messages between client and server.
 - `server/`:
-  - `index.ts`: HTTP (static files from `dist/`) and WebSocket on `/ws`, expects `join` as the first message. Messages are at most 64 KB (`MAX_PAYLOAD`), a ping every 15 s: whoever didn't answer the pong is disconnected, otherwise a vanished player would hold the exit until the end of the countdown.
-  - `rooms.ts`: rooms by code; a nonexistent code creates a room.
+  - `index.ts`: HTTP (static files from `dist/`) and WebSocket on `/ws`, expects `join` as the first message. Messages are at most 64 KB (`MAX_PAYLOAD`), a ping every 15 s: whoever didn't answer the pong is disconnected, otherwise a vanished player would hold the exit until the end of the countdown. Limits: `MAX_CLIENTS` (300) sockets on the server, `MAX_PER_IP` (12) from one address, a socket that hasn't joined in `JOIN_TIMEOUT_MS` (10 s) is dropped. Behind Caddy every socket comes from the proxy, so with `TRUST_PROXY` (set by `docker-compose.yml`) the address is the last `X-Forwarded-For` entry; never set it when the server is reachable directly.
+  - `rooms.ts`: rooms by code; a nonexistent code creates a room, up to `MAX_ROOMS` (100) at once.
   - `turn.ts`: STUN/TURN servers for voice, sent to the client in `hello`. With `TURN_HOST` and `TURN_SECRET` (set by `docker-compose.yml`) — our own coturn with temporary credentials valid for a day (the `use-auth-secret` scheme: username `expiry:tag`, password is its HMAC-SHA1); without them only public STUN, as in local development.
   - `room.ts`: one group: lobby, cycles, anomaly selection, exit countdown, verdict, samosbor, run statistics, WebRTC signal relay (`signal()` rebuilds them from known fields only). Rate limits (`Bucket`): 120 messages burst and 60 per second overall, chat and markers 8 burst and 2 per second; the excess is silently dropped.
 - `src/`: the client.

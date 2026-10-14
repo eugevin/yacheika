@@ -8,6 +8,8 @@ services:
     environment:
       TURN_HOST: ${PUBLIC_IP:?set PUBLIC_IP in .env}
       TURN_SECRET: ${TURN_SECRET:?set TURN_SECRET in .env}
+      # the client address comes from Caddy's X-Forwarded-For (connection limits per address)
+      TRUST_PROXY: "1"
 
   caddy:
     image: caddy:2

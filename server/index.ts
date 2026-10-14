@@ -1,5 +1,5 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage } from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { ClientMsg, ServerMsg } from '../shared/protocol.ts';
@@ -11,6 +11,16 @@ const PORT = Number(process.env.PORT ?? 8788);
 const MAX_PAYLOAD = 64 * 1024;
 /** Ping period; a socket that misses a pong is dropped, so a vanished player doesn't hold up the exit. */
 const HEARTBEAT_MS = 15_000;
+/** Open sockets on the whole server, and from one address (a group behind one NAT, plus reconnects). */
+const MAX_CLIENTS = 300;
+const MAX_PER_IP = 12;
+/** A socket that hasn't joined a room by then is dropped. */
+const JOIN_TIMEOUT_MS = 10_000;
+/**
+ * Behind a reverse proxy (docker-compose sets it for Caddy) every socket comes from the proxy, so the
+ * client's address is the last X-Forwarded-For entry, the one the proxy itself added.
+ */
+const TRUST_PROXY = !!process.env.TRUST_PROXY;
 const DIST = join(import.meta.dirname, '../dist');
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -42,9 +52,33 @@ const http = createServer((req, res) => {
 const rooms = new Rooms();
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: MAX_PAYLOAD });
 const alive = new WeakSet<WebSocket>();
+const perIp = new Map<string, number>();
 
-wss.on('connection', (ws) => {
+function clientIp(req: IncomingMessage) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (TRUST_PROXY && typeof forwarded === 'string') return forwarded.split(',').pop()!.trim();
+  return req.socket.remoteAddress ?? '';
+}
+
+wss.on('connection', (ws, req) => {
+  const reject = (text: string) => {
+    ws.send(JSON.stringify({ t: 'error', text } satisfies ServerMsg));
+    ws.close();
+  };
+  const ip = clientIp(req);
+  const fromIp = perIp.get(ip) ?? 0;
+  if (wss.clients.size > MAX_CLIENTS) return reject('Сервер переполнен, попробуйте позже');
+  if (fromIp >= MAX_PER_IP) return reject('Слишком много подключений с вашего адреса');
+  perIp.set(ip, fromIp + 1);
+  ws.on('close', () => {
+    const n = (perIp.get(ip) ?? 1) - 1;
+    if (n > 0) perIp.set(ip, n);
+    else perIp.delete(ip);
+  });
+
   let session: { room: Room; player: Player } | null = null;
+  const joinTimer = setTimeout(() => session || ws.close(), JOIN_TIMEOUT_MS);
+  ws.on('close', () => clearTimeout(joinTimer));
   alive.add(ws);
   ws.on('pong', () => alive.add(ws));
   ws.on('error', () => ws.terminate());

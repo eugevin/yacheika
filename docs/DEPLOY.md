@@ -128,4 +128,5 @@ Rooms live in server memory, so an update ends all games in progress. Update whe
 - **No certificate.** Check `dig` from step 1, that port 80 is open, and that the Cloudflare proxy is off. After fixing: `docker compose restart caddy`.
 - **Voice fails only for some pairs.** Test TURN per step 7. If the VPS IP is behind the provider's NAT (the interface has an address like `10.x` or `172.x`, see `ip addr`), change coturn's `--external-ip=${PUBLIC_IP}` in `docker-compose.yml` to `--external-ip=${PUBLIC_IP}/<internal IP>`.
 - **Nobody has voice.** The browser grants the microphone only over HTTPS: make sure you're on `https://`.
+- **«Сервер переполнен» or «Слишком много подключений».** Limits on rooms, sockets and sockets per address are at the top of `server/index.ts` and `server/rooms.ts`.
 - **Load.** The server is light; 1 GB of memory is enough. Voice over TURN is about 30 kbit/s for each pair that needs it.

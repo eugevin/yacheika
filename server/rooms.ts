@@ -14,6 +14,9 @@ function cleanCode(raw: unknown) {
   return code.length >= 3 && code.length <= 8 ? code : null;
 }
 
+/** Rooms on the server at once; past it, only existing rooms can be joined. */
+const MAX_ROOMS = 100;
+
 /** Rooms by code. A code that doesn't exist yet creates that room, so a shared link always works. */
 export class Rooms {
   private rooms = new Map<string, Room>();
@@ -24,7 +27,10 @@ export class Rooms {
     if (!code) return { error: 'Неверный код комнаты' };
     const name = cleanName(msg.name) || `Гость ${++this.guests}`;
     let room = this.rooms.get(code);
-    if (!room) this.rooms.set(code, (room = new Room(code)));
+    if (!room) {
+      if (this.rooms.size >= MAX_ROOMS) return { error: 'Сервер переполнен, попробуйте позже' };
+      this.rooms.set(code, (room = new Room(code)));
+    }
     if (room.full) return { error: 'Комната заполнена' };
     const mask = isMask(msg.mask) ? msg.mask : MASKS[Math.floor(Math.random() * MASKS.length)].id;
     const outfit = isOutfit(msg.outfit) ? msg.outfit : OUTFITS[Math.floor(Math.random() * OUTFITS.length)].id;
