@@ -3,7 +3,7 @@
 A cooperative browser game. The group walks the same cell of the Gigakhrushch (Samosbor style) again and again: a stair landing, the shared floor corridor, a Soviet three-room flat, a loggia. Spot an anomaly — turn back; don't — go forward. You need 10 correct passes in a row; a mistake resets the count. Some anomalies are seen by only one player, who has to convince the others.
 TypeScript without frameworks: a Vite + Three.js client and an authoritative Node server on `ws`. Sound is synthesized with Web Audio, voice chat runs over WebRTC (mesh) with positional audio. No assets: all textures are drawn on canvas.
 
-Game design (rules, cell, style, light, sound, anomaly catalogue, samosbor) is in `docs/DESIGN.md`, deployment in `docs/DEPLOY.md`. All interface text is in Russian; code comments, documentation and commit messages are in English.
+Game design (rules, cell, style, light, sound, anomaly catalogue, samosbor) is in `docs/DESIGN.md`, deployment in `docs/DEPLOY.md`, planned work in `docs/ROADMAP.md`. All interface text is in Russian; code comments, documentation and commit messages are in English.
 
 ## Commands
 

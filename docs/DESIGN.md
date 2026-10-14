@@ -325,9 +325,4 @@ After ten correct passes the dead ends of both tambours open onto a flight of st
 
 ## 8. Ideas
 
-- **"Morok":** a false anomaly seen by one player, with a barely noticeable sign that it's fake.
-- Anomalies that change while being looked at, or that only two players see together.
-- More anomalies involving players: an extra resident in the group, a faceless teammate, someone's avatar always looking at you.
-- Several cell variants with different anomaly sets; entering a neighbour's flat.
-- A log of found anomalies between games.
-- The number of passes: 10 now; lower to 8 if rounds feel long.
+Planned work and ideas are in `docs/ROADMAP.md`.
