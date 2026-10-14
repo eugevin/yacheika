@@ -1,7 +1,9 @@
 import * as THREE from 'three';
-import { GALLERY_SKIN, LEG1, LEG2, MID, MID_CENTER, VEST_H, VESTIBULES } from '../../shared/map.ts';
+import { GALLERY_SKIN, LEG1, LEG2, MID, MID_CENTER, VEST_H, VESTIBULES, ZONE } from '../../shared/map.ts';
+import { canvasTexture } from '../textures.ts';
 import { box, flat } from './geometry.ts';
 import { fittings, makeLamp, type Lamp, type LampSpec } from './lamps.ts';
+import { useBaked } from './lighting.ts';
 import { wallPiece, type Skin } from './shell.ts';
 
 /** The cable channel runs in the corner of wall and ceiling. */
@@ -46,6 +48,10 @@ export function buildTambours(
     flat(half, x0, z0, x1, z1, 0, true, skin.floor, skin.cell);
     flat(half, x0, z0, x1, z1, VEST_H, false, skin.ceiling, skin.cell);
   }
+  // yellow and black hatching over the exit zone: stand here and wait. Its half and the turned
+  // half meet in a stripe through the centre
+  const hatch = useBaked(new THREE.MeshStandardMaterial({ map: hatching(), roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }));
+  flat(half, ZONE.u0, MID.v0 + HATCH_INSET, cu, MID.v1 - HATCH_INSET, HATCH_Y, true, hatch, skin.cell);
   wallPiece(half, skin, 'px', LEG1.u0, LEG1.v0, MID.v1, 0, VEST_H);
   wallPiece(half, skin, 'nx', LEG1.u1, LEG1.v0, MID.v0, 0, VEST_H);
   wallPiece(half, skin, 'pz', MID.v0, LEG1.u1, cu, 0, VEST_H);
@@ -104,6 +110,39 @@ export function buildTambours(
     tint: (c: THREE.ColorRepresentation) => lamp.tint(c),
   }));
   return { lamps, follow: (camera) => follow(meshes, camera), deadEnds: meshes.filter((m) => m.userData.deadEnd) };
+}
+
+/** The hatching keeps off the walls by this much; it is paint, a few millimetres over the tiles. */
+const HATCH_INSET = 0.12;
+const HATCH_Y = 0.004;
+/** One yellow and one black stripe, diagonal. */
+const HATCH_PERIOD = 0.3;
+
+/**
+ * Diagonal stripes along u + v = const in the vestibule's frame (flat() gives a floor U = u,
+ * V = -v), yellow centred on u + v = k * HATCH_PERIOD. MID_CENTER lies on one (3 + 4.2 = 24 periods),
+ * and the pattern is the same under u + v -> 2 * (3 + 4.2) - (u + v), so the turned half carries the
+ * stripes on across the centre. No noise or wear: it would not survive the turn.
+ */
+function hatching() {
+  const tex = canvasTexture(
+    128,
+    128,
+    (g, w) => {
+      const img = g.createImageData(w, w);
+      for (let y = 0; y < w; y++)
+        for (let x = 0; x < w; x++) {
+          // in pixels, U - V = u + v runs along x + y (canvas y is down, V up)
+          const f = (((x + y + 1) / w) % 1 + 1) % 1;
+          const [r, gr, b] = f < 0.25 || f > 0.75 ? [196, 158, 44] : [30, 29, 26];
+          img.data.set([r, gr, b, 255], (y * w + x) * 4);
+        }
+      g.putImageData(img, 0, 0);
+    },
+    true,
+  );
+  tex.repeat.set(1 / HATCH_PERIOD, 1 / HATCH_PERIOD);
+  return tex;
 }
 
 const Y = new THREE.Vector3(0, 1, 0);

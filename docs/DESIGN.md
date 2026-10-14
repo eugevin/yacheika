@@ -45,7 +45,7 @@ Sizes in metres. Rooms are about 1.2 times larger than real ones, so six people 
 
 ### 2.1. Tambours and the loop
 
-Each exit leads into a Z-shaped tambour, symmetric under a 180° turn about the centre of its middle leg. A player standing in the exit zone (the part of the middle leg from which neither the doorway nor the dead end is visible) when a pass is resolved is moved by `loopPose` into the back tambour with that turn, and the picture doesn't change; anyone elsewhere in a tambour goes through a fade. The constraints this puts on geometry, light, sound and rendering are listed in `AGENTS.md`.
+Each exit leads into a Z-shaped tambour, symmetric under a 180° turn about the centre of its middle leg. A player standing in the exit zone (the part of the middle leg from which neither the doorway nor the dead end is visible) when a pass is resolved is moved by `loopPose` into the back tambour with that turn, and the picture doesn't change; anyone elsewhere in a tambour goes through a fade. The zone is painted on the floor in yellow and black diagonal hatching, a stripe through the centre, so the two halves of the turn carry it on into each other. The constraints this puts on geometry, light, sound and rendering are listed in `AGENTS.md`.
 
 Finish: green oil paint up to 1.5 m, whitewash above, metlakh tile, a cable duct, one caged bulb in the middle. Outside, the concrete skin of the inter-block passage.
 
