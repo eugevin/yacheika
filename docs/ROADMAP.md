@@ -22,6 +22,11 @@ An exit counts only in `ZONE`, the middle leg of the Z. A player who walks on pa
 - If players left through different exits, the majority decides; a tie is a samosbor. Stragglers in the cell are carried along either way.
 - Revisit `COUNTDOWN_MS` (20 s) afterwards.
 
+### Your own body
+
+- **Full first-person body.** Looking down shows your legs, arms and torso: the same `Character` other players see, in your outfit and protective gear, walking in step with the footsteps. The camera sits in the head, so the head and the mask stay hidden from your own view (but not from the mirror).
+- **Your reflection in the hallway mirror.** The mirror shows you, not only the others; "Extra in the mirror" then stands next to a familiar figure. It costs one draw call more on high quality.
+
 ### Verdict log
 
 One server log line per verdict: floor, anomaly, private or not, correct or not, number of players. Shows which anomalies nobody notices and which are too obvious.
@@ -32,7 +37,6 @@ One server log line per verdict: floor, anomaly, private or not, correct or not,
 - **Wallpaper seams** in the hallway and the corridor.
 - **Wallpaper over doorways.** Wallpaper must not run onto the doorway reveals or onto the doors themselves.
 - **Proper windows.** All three windows built to the same quality as the hallway one.
-- **Hallway glass.** Seen from the floor corridor, the hallway glass shows black garbage.
 - **Clock hand.** The clock is missing a hand.
 - **Drip and clock sound position.** When the player turns their head quickly, the sound's position seems to update only when the next tick or drop plays; it has to follow the listener continuously, like the other sources.
 
