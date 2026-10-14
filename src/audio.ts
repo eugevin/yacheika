@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { rng } from './textures.ts';
 import { roomAt, type RoomId } from '../shared/map.ts';
-import { SAMOSBOR_MS } from '../shared/rules.ts';
+import { SAMOSBOR, SAMOSBOR_MS } from '../shared/rules.ts';
 import { acousticsAt, creaks, footingAt, listenerRoom, reachesZone, separation, type Acoustics, type Ambient, type Footing } from './world/ambience.ts';
 import type { Emitter, Lamp, World } from './world/index.ts';
 
@@ -19,7 +19,10 @@ const BUZZ_RANGE = 5;
 const STEP_GAIN = 0.07;
 const RUN_GAIN = 0.1;
 /** Loudness of the samosbor siren, set by measurement (AGENTS.md): loud, but not above an anomaly's peaks by much. */
-const SIREN_GAIN = 0.02;
+const SIREN_GAIN = 0.065;
+/** The siren's wail, Hz: the bottom of each swing and the top, where it settles once wound up. */
+const SIREN_LOW = 250;
+const SIREN_HIGH = 440;
 /** The announcer over the building's loudspeakers (the samosbor warning, the all clear). */
 const SPEAKER_GAIN = 0.25;
 /** How loud each kind of lamp hums, and how much it crackles. Only the kitchen tube really buzzes. */
@@ -111,6 +114,7 @@ export class Sound {
   private readonly buzz: AudioNode;
   private readonly crackles: AudioNode[] = [];
   private tune: AudioBuffer | null = null;
+  private sirenWave: PeriodicWave | null = null;
   private tuneBack: AudioBuffer | null = null;
   private lampVoices: { lamp: Lamp; gain: GainNode; wall: Wall; nodes: AudioNode[] }[] = [];
   private ambient: AmbientVoice[] = [];
@@ -283,68 +287,85 @@ export class Sound {
   }
 
   /**
-   * The samosbor (docs/DESIGN.md, 7.1), all scheduled at once from now: the siren, low and rising,
-   * nothing shrill; the warning over the loudspeakers at 0.5 s; wet squelching all round from 3.5 s;
-   * silence by 6 s. The cell's own background is switched off by the world (samosbor.ts).
+   * The samosbor (docs/DESIGN.md, 7.1), all scheduled at once from now (samosbor.ts, SAMOSBOR): a
+   * motor siren on the roof of the next block winds up, wails up and down and runs down at the end;
+   * the warning over the loudspeakers, twice; wet squelching all round once the fog is thick;
+   * silence by the end. The cell's own background is switched off by the world (samosbor.ts).
    */
   samosbor() {
     const ctx = this.ctx;
     const t = ctx.currentTime;
     const end = t + SAMOSBOR_MS / 1000;
-    // the siren: two slightly detuned saws, like a rotor, kept well under 1.5 kHz
-    const siren = this.gain(0);
-    const tone = this.filter('lowpass', 700, 0.7);
-    tone.connect(this.filter('lowpass', 1300, 0.6)).connect(siren);
-    const pitch = [this.osc2('sawtooth', tone), this.osc2('sawtooth', tone, 1.004), this.osc2('triangle', tone, 0.5, 0.8)];
-    for (const [o, m] of pitch) {
-      o.frequency.setValueAtTime(95 * m, t);
-      o.frequency.exponentialRampToValueAtTime(300 * m, t + 2.8);
-      o.frequency.setTargetAtTime(310 * m, t + 2.8, 0.6);
-      o.frequency.setValueAtTime(310 * m, end - 1.4);
-      o.frequency.exponentialRampToValueAtTime(120 * m, end - 0.3);
+    // the rotor's speed: spin up, a slow wail, run down
+    const speed = ctx.createConstantSource();
+    const f = speed.offset;
+    f.setValueAtTime(SIREN_LOW * 0.3, t);
+    f.exponentialRampToValueAtTime(SIREN_HIGH, t + 3.5);
+    let at = t + 3.5;
+    while (at + 4.6 < end - 2.8) {
+      f.exponentialRampToValueAtTime(SIREN_LOW, at + 2.4);
+      f.exponentialRampToValueAtTime(SIREN_HIGH, at + 4.6);
+      at += 4.6;
+    }
+    f.setValueAtTime(SIREN_HIGH, Math.max(at, end - 2.8));
+    f.exponentialRampToValueAtTime(SIREN_LOW * 0.25, end - 0.2);
+    speed.start(t);
+    speed.stop(end);
+    // the air through the rotor's ports: a fat, hollow tone, odd harmonics strong. Band-limited by
+    // construction: eight harmonics of at most SIREN_HIGH stay under 4 kHz, so nothing shrill
+    this.sirenWave ??= ctx.createPeriodicWave(new Float32Array(9), Float32Array.from([0, 1, 0.42, 0.6, 0.22, 0.32, 0.1, 0.16, 0.06]));
+    const tone = this.filter('lowpass', 2400, 0.5);
+    // several ports a little out of step, and the housing's lower drone an octave down
+    for (const [cents, ratio, level] of [[-9, 1, 0.55], [0, 1, 1], [7, 1, 0.6], [0, 0.5, 0.35]] as const) {
+      const o = ctx.createOscillator();
+      o.setPeriodicWave(this.sirenWave);
+      o.frequency.value = 0;
+      o.detune.value = cents;
+      speed.connect(this.gain(ratio)).connect(o.frequency);
+      o.connect(this.gain(level * 0.4)).connect(tone);
       o.start(t);
       o.stop(end);
     }
-    // a slow throb, as the rotor turns
-    const throb = this.gain(1);
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 0.8;
-    lfo.connect(this.gain(0.18)).connect(throb.gain);
-    lfo.start(t);
-    lfo.stop(end);
-    siren.connect(throb);
-    // from everywhere: both sides a little apart, and into the room's reverb
+    // gusts of wind across the yard swell and thin it by an eighth
+    const swell = this.gain(1);
+    const gust = ctx.createOscillator();
+    gust.frequency.value = 0.37;
+    gust.connect(this.gain(0.12)).connect(swell.gain);
+    gust.start(t);
+    gust.stop(end);
+    const siren = this.gain(0);
+    tone.connect(swell).connect(siren);
+    siren.gain.setValueAtTime(0, t);
+    siren.gain.linearRampToValueAtTime(SIREN_GAIN, t + 3);
+    siren.gain.setValueAtTime(SIREN_GAIN, end - 2.8);
+    siren.gain.linearRampToValueAtTime(0, end - 0.3);
+    // from everywhere: both sides a little apart, the next blocks throwing it back, and the room
     for (const [pan, delay] of [[-0.45, 0], [0.45, 0.013]]) {
       const d = ctx.createDelay(0.05);
       d.delayTime.value = delay;
       const p = ctx.createStereoPanner();
       p.pan.value = pan;
-      throb.connect(d).connect(p).connect(this.master);
+      siren.connect(d).connect(p).connect(this.master);
     }
-    throb.connect(this.gain(0.25)).connect(this.room);
-    siren.gain.setValueAtTime(0, t);
-    siren.gain.linearRampToValueAtTime(SIREN_GAIN, t + 0.5);
-    siren.gain.setValueAtTime(SIREN_GAIN, end - 1.2);
-    siren.gain.linearRampToValueAtTime(0, end - 0.25);
+    const echo = ctx.createDelay(1);
+    echo.delayTime.value = 0.42;
+    const back = this.gain(0.35);
+    siren.connect(echo).connect(this.filter('lowpass', 1100, 0.6)).connect(back).connect(echo);
+    back.connect(this.gain(0.6)).connect(this.master);
+    siren.connect(this.gain(0.25)).connect(this.room);
 
-    // the loudspeakers in every flat: a narrow band, under the siren
+    // the loudspeakers in every flat: a narrow band, under the siren; said twice, as they do
     const speaker = this.gain(SPEAKER_GAIN);
     speaker.connect(this.filter('highpass', 300, 0.7)).connect(this.filter('lowpass', 1600, 0.7)).connect(this.master);
     if ('speechSynthesis' in window) speechSynthesis.cancel();
-    this.announce(
-      t + 0.5,
-      ['внимание', 'самосбор', 'всем', 'жильцам', 'немедленно', 'укрыться', 'в', 'гермоблоках'],
-      speaker,
-      'Внимание! Самосбор! Всем жильцам немедленно укрыться в гермоблоках!',
-      0.13,
-      1.1,
-      0.6,
-    );
+    const words = ['внимание', 'самосбор', 'всем', 'жильцам', 'немедленно', 'укрыться', 'в', 'гермоблоках'];
+    for (const when of [SAMOSBOR.warn, SAMOSBOR.rewarn])
+      this.announce(t + when, words, speaker, 'Внимание! Самосбор! Всем жильцам немедленно укрыться в гермоблоках!', 0.15, 0.95, 0.6);
 
-    // something wet, close by and all round, from 3.5 s
+    // something wet, close by and all round, once the fog is thick
     const r = rng(4242);
-    for (let i = 0; i < 11; i++) {
-      const at = t + 3.5 + r() * 2.0;
+    for (let i = 0; i < 16; i++) {
+      const at = t + SAMOSBOR.flicker + r() * (SAMOSBOR.covered - SAMOSBOR.flicker);
       const p = ctx.createStereoPanner();
       p.pan.value = r() * 1.6 - 0.8;
       p.connect(this.master);
@@ -389,14 +410,6 @@ export class Sound {
     o.start(t);
     o.stop(t + 0.4);
     this.burst(t, 0.07, 0.05 * v, 450, 1.5, 'lowpass', out, 0.006, null);
-  }
-
-  /** An oscillator into `to`, returned with its pitch multiplier, `gain` loud; not started. */
-  private osc2(type: OscillatorType, to: AudioNode, mult = 1, gain = 1): [OscillatorNode, number] {
-    const o = this.ctx.createOscillator();
-    o.type = type;
-    o.connect(this.gain(gain)).connect(to);
-    return [o, mult];
   }
 
   // --- the cell's sources ---

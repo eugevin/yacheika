@@ -307,14 +307,14 @@ Any anomaly can be private (section 1). Anomalies that depend on the number of p
 
 ### 7.1. Samosbor
 
-About 6 seconds over the cell where the mistake happened, timed from the verdict:
+15 seconds over the cell where the mistake happened, timed from the verdict (`SAMOSBOR` in `shared/rules.ts`):
 
-1. **0.0 s.** The lamps go out and a red emergency light comes on; the windows dim. A siren: low, rising, nothing piercing.
-2. **0.5 s.** The radio: «Внимание! Самосбор! Всем жильцам немедленно укрыться в гермоблоках».
-3. **1.5 s.** Fog creeps from the vents and under the doors; visibility drops from 40 m to 2 m.
-4. **3.5 s.** Squelching, flickering light, the screen edges swim.
-5. **5.0 s.** Fog covers the screen.
-6. **6.0 s.** Silence. The group comes to in the back tambour on floor 0, with the caption naming what was missed.
+1. **0.0 s.** The lamps go out and a red emergency light comes on; the windows dim. A motor siren on the next block's roof winds up over three seconds, then wails up and down (250–440 Hz), fat and hollow, echoing off the blocks; nothing piercing.
+2. **0.8 s.** The radio: «Внимание! Самосбор! Всем жильцам немедленно укрыться в гермоблоках». Again at 8 s.
+3. **3.0 s.** Fog creeps from the vents and under the doors; visibility drops from 40 m to 2 m.
+4. **8.0 s.** Squelching, flickering light, the screen edges swim.
+5. **13.0 s.** Fog covers the screen; the siren runs down.
+6. **15.0 s.** Silence. The group comes to in the back tambour on floor 0, with the caption naming what was missed.
 
 ### 7.2. Server
 

@@ -15,9 +15,12 @@ export const RECENT_LIMIT = 6;
 export const MAX_PLAYERS = 6;
 /**
  * A wrong verdict sets off a samosbor (docs/DESIGN.md, 7): siren, red light, fog. The next cycle
- * starts this long after it, from floor 0, behind a fade.
+ * starts this long after it, from floor 0, behind a fade. Long enough for the spoken warning to be
+ * heard out, twice.
  */
-export const SAMOSBOR_MS = 6000;
+export const SAMOSBOR_MS = 15_000;
+/** When each part of it comes, seconds from the verdict (src/samosbor.ts tells them in order). */
+export const SAMOSBOR = { warn: 0.8, rewarn: 8, fog: 3, flicker: 8, veil: 11.5, covered: 13, silence: 14.2 };
 
 /** Hardest anomaly tier allowed at a given streak. */
 export function maxDifficulty(cycle: number) {

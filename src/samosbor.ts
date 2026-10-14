@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FURNITURE } from '../shared/furniture.ts';
 import { DOORWAYS, VESTIBULES, doorRect, toWorld } from '../shared/map.ts';
+import { SAMOSBOR } from '../shared/rules.ts';
 import { canvasTexture, rng } from './textures.ts';
 import { NORMAL } from './world/geometry.ts';
 import { CHANNELS, DAYLIGHT } from './world/lighting.ts';
@@ -10,19 +11,19 @@ import type { World } from './world/index.ts';
 
 /**
  * A samosbor (docs/DESIGN.md, 7.1, 4.7), played over the cell the group got wrong; the cell is
- * rebuilt afterwards, so nothing here is undone. Times are seconds from the verdict:
- *   0.0  every lamp goes red and dim, the windows grey out (the siren is audio.ts, Sound.samosbor);
- *   0.5  the warning (main.ts shows it);
- *   1.5  rusty fog pours from the vents and from under the doors, and thickens: you see 40 m, then 2;
- *   3.5  the light stutters, the edges of the screen swim;
- *   5.0  the fog has covered the screen;
- *   5.4  the cell's background goes quiet, and the server starts the next cycle at 6.
+ * rebuilt afterwards, so nothing here is undone. Times are seconds from the verdict (SAMOSBOR):
+ *   0.0  every lamp goes red and dim, the windows grey out, the siren winds up (audio.ts, Sound.samosbor);
+ *   0.8  the warning on the loudspeakers (main.ts shows it), again at 8;
+ *   3.0  rusty fog pours from the vents and from under the doors, and thickens: you see 40 m, then 2;
+ *   8.0  squelching all round, the light stutters, the edges of the screen swim;
+ *  13.0  the fog has covered the screen;
+ *  14.2  the cell's background goes quiet, and the server starts the next cycle at 15 (SAMOSBOR_MS).
  */
-const FOG_FROM = 1.5;
-const FOG_FULL = 5.0;
-const FLICKER_FROM = 3.5;
-const VEIL_FROM = 4.4;
-const SILENCE_AT = 5.4;
+const FOG_FROM = SAMOSBOR.fog;
+const FOG_FULL = SAMOSBOR.covered;
+const FLICKER_FROM = SAMOSBOR.flicker;
+const VEIL_FROM = SAMOSBOR.veil;
+const SILENCE_AT = SAMOSBOR.silence;
 /** Seeing distance, metres, as the fog comes in. */
 const SEE_FROM = 40;
 const SEE_TO = 2;

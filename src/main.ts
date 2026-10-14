@@ -3,6 +3,7 @@ import { ANOMALIES } from '../shared/anomalies.ts';
 import { STAIRS, exitAt, loopPose, spawnPoint, stairDepth, tambourAt } from '../shared/map.ts';
 import { MASKS, OUTFITS, isMask, isOutfit, type MaskId, type OutfitId } from '../shared/masks.ts';
 import type { Phase, RunStats, ServerMsg } from '../shared/protocol.ts';
+import { SAMOSBOR } from '../shared/rules.ts';
 import { applyAnomaly, type People } from './anomalies.ts';
 import { Sound } from './audio.ts';
 import { Avatars } from './avatars.ts';
@@ -715,9 +716,9 @@ renderer.setAnimationLoop((now) => {
   }
   if (samosbor) {
     samosbor.update(samosborHeld ? 0 : realDt);
-    if (!warned && samosbor.t >= 0.5) {
+    if (!warned && samosbor.t >= SAMOSBOR.warn) {
       warned = true;
-      showMessage('ВНИМАНИЕ! САМОСБОР!', 'Всем жильцам немедленно укрыться в гермоблоках', 'var(--bad)', 4.2);
+      showMessage('ВНИМАНИЕ! САМОСБОР!', 'Всем жильцам немедленно укрыться в гермоблоках', 'var(--bad)', 6);
     }
   }
   ui.veil.style.opacity = String(samosbor?.veil ?? 0);
