@@ -254,6 +254,9 @@ export class Room {
     const split = forward === back;
     const choice: Exit | null = split ? null : forward > back ? 'forward' : 'back';
     const correct = choice !== null && (choice === 'back') === (this.anomaly !== null);
+    // one line per verdict, to see which anomalies nobody notices and which are too obvious
+    const seen = this.anomaly ? `${this.anomaly.id}${this.anomaly.only !== null ? ' (private)' : ''}` : 'clean';
+    console.log(`verdict ${this.code} floor ${this.cycle}: ${seen}, ${choice ?? 'tie'}, ${correct ? 'right' : 'wrong'}, ${forward + back}/${choices.length} out`);
     this.cycle = correct ? this.cycle + 1 : 0;
     const won = this.cycle >= GOAL;
     const a = this.anomaly;
