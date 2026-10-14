@@ -1,0 +1,64 @@
+# Production: Caddy (HTTPS with a Let's Encrypt certificate for DOMAIN) in front of the
+# game, plus coturn so voice works between players behind strict NATs. Settings come from .env
+# (see .env.example); docs/DEPLOY.md walks through it.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      TURN_HOST: ${PUBLIC_IP:?set PUBLIC_IP in .env}
+      TURN_SECRET: ${TURN_SECRET:?set TURN_SECRET in .env}
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+  # Host networking: TURN hands out relay ports from a range, which Docker's port mapping handles badly.
+  coturn:
+    image: coturn/coturn:4
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49200
+      - --external-ip=${PUBLIC_IP}
+      - --realm=yacheika
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET}
+      - --fingerprint
+      - --no-tls
+      - --no-dtls
+      - --no-cli
+      - --no-multicast-peers
+      # relay only to the internet: never let a TURN client reach the VPS itself or its private networks
+      - --denied-peer-ip=0.0.0.0-0.255.255.255
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=100.64.0.0-100.127.255.255
+      - --denied-peer-ip=127.0.0.0-127.255.255.255
+      - --denied-peer-ip=169.254.0.0-169.254.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+      - --denied-peer-ip=::1
+      - --denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+      - --denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+      - --user-quota=12
+      - --total-quota=120
+
+volumes:
+  caddy_data:
+  caddy_config:

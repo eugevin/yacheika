@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ячейка</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        --fg: #efe6c4;
+        --dim: #a89c74;
+        --accent: #e8c547;
+        --bad: #e8705f;
+        --good: #8fe07a;
+        --panel: rgba(18, 16, 10, 0.88);
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--fg); font: 15px/1.45 system-ui, sans-serif; }
+      canvas { display: block; }
+      .hidden { display: none !important; }
+      button {
+        font: inherit; color: #1a1608; background: var(--accent); border: 0; border-radius: 6px;
+        padding: 9px 18px; font-weight: 700; cursor: pointer;
+      }
+      button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--dim); }
+      button:hover { filter: brightness(1.1); }
+      input[type='text'] {
+        font: inherit; color: var(--fg); background: #0d0c08; border: 1px solid #4a4430; border-radius: 6px; padding: 8px 10px; width: 100%;
+      }
+      kbd { display: inline-block; min-width: 1.6em; padding: 0 5px; border: 1px solid var(--dim); border-radius: 4px; font: 12px/1.6 monospace; text-align: center; }
+
+      .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 20; }
+      :root { --type: "Courier New", "Liberation Mono", "Nimbus Mono PS", "Cousine", monospace; --ink: #1d1b2a; --red: #a3302a; --paper: #efe8d3; }
+
+      /* the lobby: a notice pinned to a cork board, typed on a typewriter */
+      #lobby { background-color: #8a5f38; box-shadow: inset 0 0 160px 40px rgba(0, 0, 0, 0.75); overflow: auto; flex-direction: column; justify-content: safe center; gap: 6px; padding: 18px 0; }
+      .stencil { font: 900 46px/1 var(--type); letter-spacing: 0.35em; color: rgba(22, 16, 8, 0.82); text-shadow: 0 1px 0 rgba(255, 220, 160, 0.15); margin-left: 0.35em; }
+      .board { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; justify-content: center; max-width: 94vw; }
+      .paper {
+        position: relative; color: var(--ink); font: 15px/1.45 var(--type);
+        background: linear-gradient(170deg, #f4eedb 0%, var(--paper) 55%, #e4dbc0 100%);
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4);
+      }
+      .pin { position: absolute; top: 9px; width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #f07a6c, #a3201a 60%, #5a0f0b); box-shadow: 2px 3px 3px rgba(0, 0, 0, 0.45); }
+      .sheet { width: min(480px, 92vw); padding: 24px 32px 18px; transform: rotate(-0.6deg); }
+      .sheet h2 { margin: 0 0 10px; text-align: center; font: 700 26px/1.2 var(--type); letter-spacing: 0.3em; }
+      .sheet p { margin: 0 0 6px; font-size: 14px; }
+      .sheet .signed { text-align: right; font-style: italic; margin-bottom: 8px; }
+      .paper label { display: block; margin: 9px 0 2px; color: #4a4636; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; }
+      .paper input[type='text'] { font: 17px var(--type); color: var(--ink); background: transparent; border: 0; border-bottom: 1px dashed #6d6650; border-radius: 0; padding: 2px 4px; width: 100%; outline: none; }
+      .paper input[type='text']:focus { border-bottom: 1px solid var(--ink); }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .paper .check { display: flex; gap: 8px; align-items: center; color: var(--ink); margin-top: 4px; font-size: 14px; text-transform: none; letter-spacing: 0; }
+      .paper button { font-family: var(--type); background: transparent; color: var(--ink); border: 1.5px solid var(--ink); border-radius: 3px; padding: 6px 14px; font-weight: 700; }
+      .paper button:hover { background: rgba(0, 0, 0, 0.06); filter: none; }
+      .paper button.stamp { color: var(--red); border: 3px double var(--red); letter-spacing: 0.12em; text-transform: uppercase; padding: 8px 16px; transform: rotate(-1.5deg); }
+      .pick { display: flex; gap: 4px; flex-wrap: wrap; }
+      .pick button { padding: 2px; line-height: 0; border: 1px solid transparent; border-radius: 50%; }
+      .pick button.on { border: 2px solid var(--red); }
+      .pick canvas { width: 48px; height: 48px; }
+      .choice { font-size: 13px; margin: 2px 0 0; min-height: 1.4em; }
+      #mic-warning { margin-top: 8px; padding: 6px 10px; border-left: 3px solid var(--red); background: rgba(163, 48, 42, 0.07); color: var(--ink); font-size: 12px; }
+      #mic-warning code { color: var(--red); }
+      #lobby-error { color: var(--red); min-height: 1.4em; margin-top: 8px; font-weight: 700; }
+      .photo { width: 200px; padding: 12px 12px 8px; transform: rotate(2.2deg); margin-top: 26px; text-align: center; }
+      .photo canvas { width: 176px; height: 235px; background: radial-gradient(ellipse at 50% 40%, #d8d4c8, #9a968a); display: block; }
+      .photo div { font-size: 12px; margin-top: 6px; color: #4a4636; }
+
+      /* Esc: the duty officer's log, a lined page with a red margin */
+      #pause { background: rgba(0, 0, 0, 0.6); cursor: pointer; }
+      .journal {
+        cursor: default; width: min(560px, 94vw); max-height: 94vh; overflow: auto; padding: 22px 26px 18px 64px;
+        background: repeating-linear-gradient(var(--paper) 0 26px, #a8bdd0 26px 27px);
+      }
+      .journal::before { content: ''; position: absolute; top: 0; bottom: 0; left: 46px; border-left: 2px solid rgba(190, 60, 50, 0.6); }
+      .journal h2 { margin: 0 0 4px; font: 700 20px/1.2 var(--type); letter-spacing: 0.18em; white-space: nowrap; }
+      .journal h3 { margin: 14px 0 4px; font: 700 14px var(--type); text-transform: uppercase; letter-spacing: 0.1em; }
+      .journal .between { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+      #shift { color: var(--red); font-weight: 700; margin: 2px 0 8px; }
+      .journal table { border-collapse: collapse; width: 100%; font-size: 14px; }
+      .journal th { text-align: left; font-weight: 400; color: #4a4636; font-size: 12px; text-transform: uppercase; }
+      .journal td, .journal th { padding: 3px 8px 3px 0; vertical-align: top; }
+      .journal .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; border: 1px solid rgba(0, 0, 0, 0.4); }
+      .journal .gear { color: #4a4636; font-size: 12px; }
+      .journal .row { margin-top: 12px; }
+      .controls { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 13px; margin: 4px 0 10px; }
+      .paper kbd { border-color: #6d6650; color: var(--ink); }
+      .rules { font-size: 13px; color: #34312a; }
+      .settings { display: grid; grid-template-columns: auto 1fr 3.5em; gap: 2px 12px; align-items: center; font-size: 13px; margin: 4px 0 10px; }
+      .settings label { margin: 0; }
+      .settings input[type='range'] { width: 100%; accent-color: var(--red); cursor: pointer; }
+      .settings output { text-align: right; }
+      #broken { background: #000; z-index: 40; }
+      .resume { text-align: center; color: var(--red); margin-top: 12px; font-weight: 700; }
+
+      #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+      #crosshair { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: rgba(255, 255, 255, 0.7); }
+      #banner { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 4px; background: rgba(0, 0, 0, 0.6); font: 15px var(--type); white-space: nowrap; }
+      #message { position: absolute; top: 36%; left: 0; right: 0; text-align: center; text-shadow: 0 2px 10px #000; transition: opacity 0.5s; }
+      #message .title { font-size: 42px; font-weight: 800; letter-spacing: 0.08em; }
+      #message .detail { font-size: 18px; color: var(--fg); margin-top: 6px; }
+      #status { position: absolute; top: 14px; right: 16px; padding: 3px 10px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); font-size: 12px; color: var(--fg); }
+      #chat { position: absolute; left: 16px; bottom: 56px; width: min(420px, 60vw); font-size: 14px; text-shadow: 0 1px 3px #000; }
+      #chat div { transition: opacity 1s; }
+      #chat-input { position: absolute; left: 16px; bottom: 16px; width: min(420px, 60vw); pointer-events: auto; }
+      #debug { position: fixed; left: 10px; top: 10px; z-index: 30; padding: 6px 10px; border-radius: 6px; background: rgba(0, 0, 0, 0.7); font: 12px/1.5 monospace; white-space: pre; pointer-events: none; }
+      #fade { position: fixed; inset: 0; background: #000; pointer-events: none; z-index: 15; opacity: 1; }
+      /* the samosbor: fog over the whole screen (the colour of SMOG_RGB in samosbor.ts) and swimming edges */
+      #veil { position: fixed; inset: 0; background: rgb(92, 51, 28); pointer-events: none; z-index: 9; opacity: 0; }
+      #warp {
+        position: fixed; inset: -3%; pointer-events: none; z-index: 8; opacity: 0;
+        backdrop-filter: blur(6px) saturate(1.5) hue-rotate(-12deg);
+        -webkit-mask-image: radial-gradient(ellipse at center, transparent 30%, #000 78%);
+        mask-image: radial-gradient(ellipse at center, transparent 30%, #000 78%);
+        animation: swim 2.4s ease-in-out infinite alternate;
+      }
+      @keyframes swim { from { transform: scale(1) rotate(-0.6deg); } to { transform: scale(1.06) rotate(0.7deg); } }
+      #caption { position: absolute; bottom: 64px; left: 0; right: 0; text-align: center; font: 17px var(--type); text-shadow: 0 2px 8px #000; transition: opacity 0.8s; opacity: 0; }
+      #final { background: rgba(0, 0, 0, 0.75); z-index: 25; }
+      #final .sheet { transform: rotate(0.5deg); }
+      #final ul { list-style: none; padding: 0; margin: 14px 0 18px; font-size: 16px; }
+      #final li { border-bottom: 1px dashed #8a8068; padding: 4px 0; }
+    </style>
+  </head>
+  <body>
+    <div id="fade"></div>
+    <div id="veil"></div>
+    <div id="warp"></div>
+    <div id="debug" class="hidden"></div>
+
+    <div id="lobby" class="screen">
+      <div class="stencil">ЯЧЕЙКА</div>
+      <div class="board">
+        <div class="paper photo">
+          <span class="pin" style="left: 93px"></span>
+          <canvas id="preview" width="352" height="470"></canvas>
+          <div>Фото на удостоверение</div>
+        </div>
+        <div class="paper sheet">
+          <span class="pin" style="left: 22px"></span><span class="pin" style="right: 22px"></span>
+          <h2>ОБЪЯВЛЕНИЕ</h2>
+          <p>Жильцам, заступающим на обход! Обход проводится по ячейке: площадка, коридор этажа, кв. 49, лоджия.</p>
+          <p>При обнаружении отклонений — немедленно вернуться назад. Отклонений не обнаружено — продолжать движение. Десять этажей без отклонений — обход окончен. При самосборе — сохранять спокойствие.</p>
+          <div class="signed">Домовой комитет</div>
+          <label for="name">Фамилия жильца</label>
+          <input id="name" type="text" maxlength="16" autocomplete="off" />
+          <label for="code">Номер блока</label>
+          <div class="row">
+            <input id="code" type="text" maxlength="8" autocomplete="off" />
+            <button id="new-code" title="Другой блок">↻</button>
+          </div>
+          <label>Средства защиты</label>
+          <div id="outfits" class="pick"></div>
+          <div class="choice">Одежда: <span id="outfit-name"></span></div>
+          <div id="masks" class="pick"></div>
+          <div class="choice">Защита: <span id="mask-name"></span></div>
+          <label>Связь</label>
+          <label class="check"><input id="mic" type="checkbox" checked /> Голосовой чат (слышно только тех, кто рядом)</label>
+          <div id="mic-warning" class="hidden">
+            Микрофон недоступен: браузер разрешает его только по <b>https://</b> или на localhost, а страница открыта по http.
+            Откройте игру по https-адресу (<code>npm run dev:lan</code> у того, кто запускает сервер). Слышать других можно и так.
+          </div>
+          <div style="margin-top: 18px"><button id="join" class="stamp">Заступить на обход</button></div>
+          <div id="lobby-error"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="pause" class="screen hidden">
+      <div class="paper journal">
+        <div class="between">
+          <h2>ЖУРНАЛ ДЕЖУРНОГО</h2>
+          <button id="copy">Скопировать ссылку</button>
+        </div>
+        <div>Блок № <b id="room-code"></b></div>
+        <div id="shift"></div>
+        <table>
+          <thead><tr><th>Кв.</th><th>Жилец</th><th>Средства защиты</th></tr></thead>
+          <tbody id="players"></tbody>
+        </table>
+        <div class="row">
+          <button id="start">Начать обход</button>
+          <button id="quality"></button>
+        </div>
+        <h3>Настройки</h3>
+        <div class="settings">
+          <label for="set-sens">Мышь</label><input id="set-sens" type="range" min="0.25" max="3" step="0.05" /><output for="set-sens"></output>
+          <label for="set-sound">Звук</label><input id="set-sound" type="range" min="0" max="1" step="0.05" /><output for="set-sound"></output>
+          <label for="set-voice">Голоса</label><input id="set-voice" type="range" min="0" max="2" step="0.05" /><output for="set-voice"></output>
+        </div>
+        <h3>Инструкция дежурному</h3>
+        <div class="controls">
+          <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>ходить, <kbd>Shift</kbd> быстрее</span>
+          <span><kbd>ЛКМ</kbd> / <kbd>E</kbd></span><span>поставить метку: «вот здесь!»</span>
+          <span><kbd>Enter</kbd></span><span>чат</span>
+          <span><kbd>M</kbd></span><span>выключить микрофон</span>
+          <span><kbd>N</kbd></span><span>выключить звук</span>
+          <span><kbd>G</kbd></span><span>качество графики</span>
+          <span><kbd>F3</kbd></span><span>отладка: кадры в секунду, вызовы отрисовки</span>
+        </div>
+        <div class="rules">
+          Этаж засчитывается, когда вся группа уходит в один выход и проходит по нему до поворота: назад — в проход, из которого вы пришли, вперёд — в проход за лоджией.
+          Номер этажа — на стене площадки. Некоторые отклонения видит только один жилец.
+        </div>
+        <div class="resume">Кликните, чтобы продолжить</div>
+      </div>
+    </div>
+
+    <div id="final" class="screen hidden">
+      <div class="paper sheet">
+        <span class="pin" style="left: 22px"></span><span class="pin" style="right: 22px"></span>
+        <h2>АКТ</h2>
+        <p style="text-align: center">об окончании обхода</p>
+        <p>Самосбор миновал. Жильцам вернуться в квартиры.</p>
+        <ul id="final-stats"></ul>
+        <div class="row">
+          <button id="final-again" class="stamp">Новый обход</button>
+          <button id="final-stay">Осмотреться</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="broken" class="screen hidden">
+      <div class="paper sheet">
+        <h2>НЕИСПРАВНОСТЬ</h2>
+        <p id="broken-text"></p>
+        <div class="row" style="justify-content: center; margin-top: 14px"><button id="broken-reload" class="stamp">Обновить страницу</button></div>
+      </div>
+    </div>
+
+    <div id="hud" class="hidden">
+      <div id="crosshair"></div>
+      <div id="banner" class="hidden"></div>
+      <div id="message"></div>
+      <div id="caption"></div>
+      <div id="status"></div>
+      <div id="chat"></div>
+      <input id="chat-input" type="text" maxlength="200" class="hidden" placeholder="Сообщение… (Enter — отправить, Esc — отмена)" />
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
