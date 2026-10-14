@@ -1,5 +1,7 @@
 # Yacheika
 
+**Play:** https://yacheika.eugevin.dev
+
 A cooperative browser game for 1–6 players. A group of residents walks the same cell of an endless prefab block, floor after floor: a stair landing, the floor corridor, a three-room flat, a loggia.
 
 - Spotted an anomaly? Turn back.
