@@ -38,6 +38,7 @@ One server log line per verdict: floor, anomaly, private or not, correct or not,
 - **Wallpaper over doorways.** Wallpaper must not run onto the doorway reveals or onto the doors themselves.
 - **Thresholds.** Under a doorway the floor of one room meets the other's in a bare line: a threshold strip covers the joint.
 - **Real mirrors.** The small mirror over the washbasin and the bedroom dresser's mirror reflect like the hall one.
+- **Brightness back in range.** Measured from each room's centre in four directions (docs/DESIGN.md, 4.9), the same as in 0.1.0: the living room (0.19) and the loggia (0.22) are darker than 0.25, and the bedroom sconce overexposes 4% of the frame looking at the north wall.
 - **Clock hand.** The clock is missing a hand.
 - **Drip and clock sound position.** When the player turns their head quickly, the sound's position seems to update only when the next tick or drop plays; it has to follow the listener continuously, like the other sources.
 
