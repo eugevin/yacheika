@@ -115,10 +115,15 @@ const LAMPS: (Omit<LampSpec, 'ceiling'> & { room: RoomId })[] = [
   { room: 'bath', x: 23.4, z: 7.14, style: 'plafond', kelvin: 4000, power: 1.6 },
   { room: 'wc', x: 23.63, z: 8.96, style: 'plafond', kelvin: 4000, power: 1 },
   { room: 'kitchen', x: 27.22, z: 7.74, style: 'tube', kelvin: 5000, power: 4.3, green: 0.08 },
-  { room: 'living', x: 25.61, z: 13.11, style: 'chandelier', kelvin: 2700, power: 8 },
-  { room: 'bedroom', x: 19.25, z: 10.36, y: 1.55, facing: 'pz', style: 'sconce', kelvin: 2400, power: 12.5 },
-  { room: 'loggia', x: 20.38, z: 15.88, style: 'bulb', kelvin: 2700, power: 3.8 },
+  { room: 'living', x: 25.61, z: 13.11, style: 'chandelier', kelvin: 2700, power: 13 },
+  { room: 'bedroom', x: 19.25, z: 10.36, y: 1.55, facing: 'pz', style: 'sconce', kelvin: 2400, power: 15 },
+  { room: 'loggia', x: 20.38, z: 15.88, style: 'bulb', kelvin: 2700, power: 5.7 },
 ];
+/**
+ * A sconce hangs a hand's width off the wall, and its shade spreads the bulb: as a point source the
+ * wall around it burns out. Treated as a bigger source, it stops brightening further out.
+ */
+const SCONCE_NEAR = 0.9;
 /** Night behind every window: the murk, lit from below by the street lamps. Radiance, linear. */
 const NIGHT_RADIANCE = 0.12;
 
@@ -386,7 +391,7 @@ function lightContext(lamps: Lamp[], stairs: Partial<Record<Exit, Lamp>> = {}) {
     REVEAL,
     SOLIDS.map((s) => s.box),
   );
-  const source = (l: Lamp): LightSource => ({ pos: l.pos, channel: l.channel, room: l.room ?? 'vestibule' });
+  const source = (l: Lamp): LightSource => ({ pos: l.pos, channel: l.channel, room: l.room ?? 'vestibule', near: l.style === 'sconce' ? SCONCE_NEAR : undefined });
   const exits = ['back', 'forward'] as const;
   // lamps 0 and 1 are the back and forward vestibules'
   const vest = exits.map((exit, i) => ({ space: vestibuleSpace(VESTIBULES[exit]), lamps: [source(lamps[i])] }));

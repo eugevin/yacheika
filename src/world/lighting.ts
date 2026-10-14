@@ -43,7 +43,7 @@ const WINDOW_REACH = 8;
 /** Within about this distance a lamp stops getting brighter (its bulb has a size). */
 const NEAR = 0.5;
 /** Inverse square that levels off smoothly near the source: a hard clamp leaves a ring on the ceiling. */
-const falloff = (d: number) => 1 / (d * d + NEAR * NEAR);
+const falloff = (d: number, near = NEAR) => 1 / (d * d + near * near);
 const AO_RAYS = 12;
 const AO_LEN = 0.55;
 const STEP = 0.1;
@@ -57,6 +57,8 @@ export interface LightSource {
   channel: number;
   /** Room whose bounce it lifts. */
   room: RoomId | 'vestibule';
+  /** Size of the source, where it stops getting brighter (NEAR when left out). */
+  near?: number;
 }
 
 /** A window as a soft area light: a few points on its opening shining into the room. */
@@ -278,7 +280,7 @@ export function gather(space: Space, lamps: LightSource[], windows: WindowSource
     const cos = n ? n.dot(toL) / d : 0.5;
     if (cos <= 0) continue;
     if (!visible(space, p, l.pos)) continue;
-    const fall = falloff(d) * Math.max(0, 1 - (d / LAMP_REACH) ** 4) ** 2;
+    const fall = falloff(d, l.near) * Math.max(0, 1 - (d / LAMP_REACH) ** 4) ** 2;
     // corners also dim direct light a little: softer, more solid-looking shapes
     add(l.channel, fall * cos * (0.55 + 0.45 * ao));
   }
