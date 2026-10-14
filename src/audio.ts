@@ -63,6 +63,8 @@ type V3 = { x: number; y: number; z: number };
 /** The part of a voice that walls act on: a lowpass and a gain in front of its panner. */
 interface Wall {
   room: RoomId | null;
+  /** A morok's: a wall takes its loudness as usual, but not its top, as if it came from inside the head. */
+  dry: boolean;
   filter: BiquadFilterNode;
   gain: GainNode;
 }
@@ -275,11 +277,11 @@ export class Sound {
       return;
     }
     this.footfall(t, gain * 0.7, this.master, floor, creak);
-    // the follower anomaly: the same step again, a beat later, a few metres behind us
+    // the follower anomaly: the same step again, a beat later, a few metres behind us; dry when a morok
     if (this.world?.follower) {
       const back = new THREE.Vector3(this.listener.fwd.x, 0, this.listener.fwd.z).normalize();
       const behind = this.listener.pos.clone().addScaledVector(back, -3.2).setY(0.1);
-      this.footfall(t + 0.34, gain * 0.9, this.at(behind), floor, false);
+      this.footfall(t + 0.34, gain * 0.9, this.at(behind), floor, false, this.world.morok === 'sound' ? null : this.room);
     }
   }
 
@@ -416,14 +418,14 @@ export class Sound {
   // --- the cell's sources ---
 
   /** One ambient source: a panner with a hard range, a switch, and whatever the source plays into it. */
-  private placed(p: V3, range: number, send: number, bus: AudioNode, on: number, panning: PanningModelType = 'HRTF'): SourceVoice {
+  private placed(p: V3, range: number, send: number, bus: AudioNode, on: number, panning: PanningModelType = 'HRTF', dry = false): SourceVoice {
     const panner = this.panner('linear', 0.7, range, panning);
     place(panner, p);
     panner.connect(bus);
     // the reverb is fed after the distance, so a source out of range is silent there too
-    const s = this.gain(send);
+    const s = this.gain(dry ? 0 : send);
     panner.connect(s).connect(this.room);
-    const wall = this.wall(roomAt(p.x, p.z)?.id ?? null);
+    const wall = this.wall(roomAt(p.x, p.z)?.id ?? null, dry);
     wall.gain.connect(panner);
     const g = this.gain(on);
     g.connect(wall.filter);
@@ -434,7 +436,7 @@ export class Sound {
     // Chromium's HRTF panner idles through silence and then glides from the stale direction, so a
     // click after a head turn comes from where the source used to be: lone clicks pan by equal power
     const clicks = a.kind === 'drip' || a.kind === 'clock' || a.kind === 'meter';
-    const v: AmbientVoice = { a, ...this.placed(a, a.range, SEND[a.kind], this.cell, a.on ? 1 : 0, clicks ? 'equalpower' : 'HRTF') };
+    const v: AmbientVoice = { a, ...this.placed(a, a.range, SEND[a.kind], this.cell, a.on ? 1 : 0, clicks ? 'equalpower' : 'HRTF', a.dry) };
     const every = (period: number, at: number[], play: Pattern['play'], origin = this.now) => v.patterns.push({ origin, period, at, play, until: this.now });
     const ctx = this.ctx;
     const out = v.on;
@@ -507,9 +509,9 @@ export class Sound {
   }
 
   /** Walls between the listener and a source in `room`, set at once to how things stand now. */
-  private wall(room: RoomId | null): Wall {
+  private wall(room: RoomId | null, dry = false): Wall {
     const m = MUFFLE[separation(this.here, room)];
-    const w = { room, filter: this.filter('lowpass', m.freq, 0.7), gain: this.gain(m.gain) };
+    const w = { room, dry, filter: this.filter('lowpass', dry ? MUFFLE[0].freq : m.freq, 0.7), gain: this.gain(m.gain) };
     w.filter.connect(w.gain);
     return w;
   }
@@ -517,7 +519,7 @@ export class Sound {
   /** The listener changed rooms: glide to the new muffling. */
   private muffle(w: Wall, t: number) {
     const m = MUFFLE[separation(this.here, w.room)];
-    w.filter.frequency.setTargetAtTime(m.freq, t, 0.08);
+    if (!w.dry) w.filter.frequency.setTargetAtTime(m.freq, t, 0.08);
     w.gain.gain.setTargetAtTime(m.gain, t, 0.08);
   }
 
@@ -664,27 +666,27 @@ export class Sound {
    * tiles, gritty on concrete, a soft slap on linoleum, a hollow knock on parquet, and a creak on
    * the boards that creak.
    */
-  private footfall(t: number, gain: number, out: AudioNode, floor: Footing, creak: boolean) {
+  private footfall(t: number, gain: number, out: AudioNode, floor: Footing, creak: boolean, room: AudioNode | null = this.room) {
     const v = 0.85 + Math.random() * 0.3;
     if (floor === 'carpet') {
       this.thump(t, 70 * v, 0.07, gain * 0.8, out);
-      this.burst(t, 0.09, gain * 0.8, 500 * v, 0.8, 'lowpass', out);
+      this.burst(t, 0.09, gain * 0.8, 500 * v, 0.8, 'lowpass', out, undefined, room);
     } else if (floor === 'tile') {
       this.thump(t, 95 * v, 0.05, gain * 0.7, out);
-      this.burst(t, 0.035, gain * 0.8, 1400 * v, 3, 'bandpass', out, 0.003);
-      this.burst(t, 0.06, gain * 0.5, 700 * v, 1, 'lowpass', out);
+      this.burst(t, 0.035, gain * 0.8, 1400 * v, 3, 'bandpass', out, 0.003, room);
+      this.burst(t, 0.06, gain * 0.5, 700 * v, 1, 'lowpass', out, undefined, room);
     } else if (floor === 'concrete') {
       this.thump(t, 80 * v, 0.06, gain * 0.8, out);
-      this.burst(t, 0.07, gain, 900 * v, 0.8, 'lowpass', out);
-      this.burst(t + 0.03, 0.08, gain * 0.3, 1200 * v, 2, 'bandpass', out, 0.01);
+      this.burst(t, 0.07, gain, 900 * v, 0.8, 'lowpass', out, undefined, room);
+      this.burst(t + 0.03, 0.08, gain * 0.3, 1200 * v, 2, 'bandpass', out, 0.01, room);
     } else if (floor === 'linoleum') {
       this.thump(t, 75 * v, 0.07, gain * 0.9, out);
-      this.burst(t, 0.06, gain * 0.8, 800 * v, 0.9, 'lowpass', out);
-      this.burst(t + 0.05, 0.05, gain * 0.2, 1300 * v, 3, 'bandpass', out, 0.01);
+      this.burst(t, 0.06, gain * 0.8, 800 * v, 0.9, 'lowpass', out, undefined, room);
+      this.burst(t + 0.05, 0.05, gain * 0.2, 1300 * v, 3, 'bandpass', out, 0.01, room);
     } else {
       this.thump(t, 120 * v, 0.08, gain * 0.8, out);
-      this.burst(t, 0.06, gain * 0.8, 450 * v, 3, 'bandpass', out);
-      this.burst(t, 0.04, gain * 0.4, 1200 * v, 1, 'lowpass', out);
+      this.burst(t, 0.06, gain * 0.8, 450 * v, 3, 'bandpass', out, undefined, room);
+      this.burst(t, 0.04, gain * 0.4, 1200 * v, 1, 'lowpass', out, undefined, room);
     }
     if (creak) this.creak(t + 0.04, gain * 0.5, v, out);
   }
@@ -707,7 +709,7 @@ export class Sound {
 
   /** One anomaly sound (World.emitters): placed like the cell's own sources, walls and range included. */
   private emitterVoice(e: Emitter): EmitterVoice {
-    const v: EmitterVoice = { e, done: false, play: null, ...this.placed(e, e.range, 0.5, this.master, 1) };
+    const v: EmitterVoice = { e, done: false, play: null, ...this.placed(e, e.range, 0.5, this.master, 1, 'HRTF', e.dry) };
     const out = this.gain(e.gain ?? 1);
     out.connect(v.on);
     v.nodes.push(out);

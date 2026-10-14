@@ -5,6 +5,7 @@ import { ROOM_BY_ID, ROOMS, onSide, type RoomId } from '../shared/map.ts';
 import { MASKS, OUTFITS } from '../shared/masks.ts';
 import type { PlayerInfo } from '../shared/protocol.ts';
 import { Character, type Look } from './character.ts';
+import { shimmer } from './morok.ts';
 import { canvasTexture, rng } from './textures.ts';
 import { darkenWindows } from './world/exterior.ts';
 import { cloth } from './world/furniture.ts';
@@ -22,7 +23,8 @@ export interface People {
   self: PlayerInfo;
   others: PlayerInfo[];
 }
-type Apply = (w: World, r: Rand, cycle: number, people: People) => void;
+/** What it changed or added, for the shimmer of a morok (morok.ts); a sound-only anomaly returns nothing. */
+type Apply = (w: World, r: Rand, cycle: number, people: People) => THREE.Object3D[] | void;
 
 const pick = <T>(list: readonly T[], r: Rand) => list[Math.floor(r() * list.length)];
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -64,7 +66,8 @@ function floorGlow(w: World, x: number, z: number, size: number, rgb: string, st
   );
   m.rotation.x = -Math.PI / 2;
   m.position.set(x, 0.006, z);
-  w.group.add(m);
+  // a morok casts no light
+  if (w.morok !== 'sight') w.group.add(m);
   return m;
 }
 
@@ -109,8 +112,12 @@ const APPLY: Record<string, Apply> = {
   floor_wrong: (w, r, cycle) => {
     const n = cycle + pick(cycle > 0 ? [1, 2, -1] : [1, 2], r);
     setMap(w.floorSign.material, w.floorTexture(String(n)));
+    return [w.floorSign];
   },
-  floor_mirror: (w, _r, cycle) => setMap(w.floorSign.material, w.floorTexture(String(cycle), true)),
+  floor_mirror: (w, _r, cycle) => {
+    setMap(w.floorSign.material, w.floorTexture(String(cycle), true));
+    return [w.floorSign];
+  },
   neighbour_ajar: (w, r) => {
     // one of flats 43-48 stands ajar onto the corridor, nothing but dark behind it (the creak of 41 and 42 would reach the vestibule)
     const doors = Object.entries(w.props.common.neighbourDoors).filter(([n]) => Number(n) >= 43);
@@ -121,6 +128,7 @@ const APPLY: Record<string, Apply> = {
     leaf.parent!.add(gap);
     const p = worldAt(leaf.parent!, 0, 1.2, 0.3);
     w.emitters.push({ kind: 'creak', x: p.x, y: p.y, z: p.z, range: 8, near: 3.5 });
+    return [leaf, gap];
   },
   notice_other: (w, r) => {
     const text = pick(
@@ -132,6 +140,7 @@ const APPLY: Record<string, Apply> = {
       r,
     );
     setMap(w.props.common.notice.material, notice('ОБЪЯВЛЕНИЕ', text));
+    return [w.props.common.notice];
   },
   chute_hum: (w) => {
     // a drone up the rubbish chute, and the hatch trembling with it
@@ -192,12 +201,14 @@ const APPLY: Record<string, Apply> = {
     door.position.set((bw - 0.02) / 2, 0, 0.005);
     hinge.add(door);
     const paper = lit(w, at, { color: 0xe8e2d0, roughness: 0.9 });
-    for (let k = 0; k < 3; k++) {
+    const letters = [0, 1, 2].map((k) => {
       const letter = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.003), paper);
       letter.position.set(cx + (k - 1) * 0.05, cy - 0.04 + k * 0.02, front + 0.02 + k * 0.012);
       letter.rotation.set(-0.5 - r() * 0.3, 0, (r() - 0.5) * 0.5);
       g.add(letter);
-    }
+      return letter;
+    });
+    return [hole, hinge, ...letters];
   },
 
   // --- hall and pantry ---
@@ -211,6 +222,7 @@ const APPLY: Record<string, Apply> = {
     extra.material = pick(pairs, r).material;
     extra.position.z += 0.25;
     w.props.hall.slippers.add(extra);
+    return [extra];
   },
   receiver_off: (w) => {
     // the handset lies beside the phone, purring the dial tone
@@ -220,18 +232,23 @@ const APPLY: Record<string, Apply> = {
     rec.updateMatrixWorld(true);
     const p = worldAt(rec);
     w.emitters.push({ kind: 'dialtone', x: p.x, y: p.y, z: p.z, range: 3.5 });
+    return [rec];
   },
   phone_ringing: (w) => {
     const p = worldAt(w.props.hall.receiver.parent!);
     w.emitters.push({ kind: 'phone', x: p.x, y: p.y, z: p.z, range: 9, every: 4, at: [1] });
   },
-  meter_backwards: (w) => (w.props.hall.meter.dir = -1),
+  meter_backwards: (w) => {
+    w.props.hall.meter.dir = -1;
+    return [w.props.hall.meterDisk];
+  },
   chain_extra: (w) => {
     const chain = w.props.hall.chain;
     const second = chain.clone();
     second.position.x += 0.075;
     second.position.y -= 0.03;
     chain.parent!.add(second);
+    return [second];
   },
   mirror_extra: (w, r) => {
     // Somebody stands in the doorway to the passage, looking into the mirror; seen only in the
@@ -258,6 +275,7 @@ const APPLY: Record<string, Apply> = {
     ghost.position.set(0, 0.4, 0.0315);
     m.glass.parent!.add(ghost);
     m.ghost = ghost;
+    return [stranger.root, ghost];
   },
   pantry_open: (w) => {
     // the pantry door stands open into the hall: nothing inside but dark
@@ -274,6 +292,7 @@ const APPLY: Record<string, Apply> = {
     slab.parent!.parent!.add(hole);
     const p = worldAt(hinge, d / 2, 1.2, 0.3);
     w.emitters.push({ kind: 'creak', x: p.x, y: p.y, z: p.z, range: 7, near: 3 });
+    return [hinge, hole];
   },
 
   // --- kitchen ---
@@ -286,6 +305,7 @@ const APPLY: Record<string, Apply> = {
     w.updaters.push((t) => flame.scale.set(1 + 0.06 * Math.sin(t * 37 + i), 0.85 + 0.2 * Math.abs(Math.sin(t * 13.3 + i * 2)), 1 + 0.06 * Math.sin(t * 29)));
     const p = worldAt(b, 0, 0.05, 0);
     w.emitters.push({ kind: 'hiss', x: p.x, y: p.y, z: p.z, range: 4 });
+    return [flame];
   },
   fridge_open: (w) => {
     // the ZIL stands open, its lamp lighting the shelves and a patch of floor
@@ -316,8 +336,12 @@ const APPLY: Record<string, Apply> = {
     body.add(glow);
     const f = worldAt(body, 0, 0, fd / 2 + 0.5);
     floorGlow(w, f.x, f.z, 1.4, '255,248,230', 0.18);
+    return [door, glow];
   },
-  calendar_year: (w, r) => setMap(w.props.kitchen.calendar.material, calendarSheet(pick([1985, 1987, 1968, 1991, 2026], r))),
+  calendar_year: (w, r) => {
+    setMap(w.props.kitchen.calendar.material, calendarSheet(pick([1985, 1987, 1968, 1991, 2026], r)));
+    return [w.props.kitchen.calendar];
+  },
   plate_extra: (w, r, _c, people) => {
     // one plate more than there are people at the table
     const n = 1 + people.others.length;
@@ -326,8 +350,11 @@ const APPLY: Record<string, Apply> = {
     const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.07, 0.015, 20), lit(w, at, { color: 0xe4e0d6, roughness: 0.5 }));
     plate.position.set(at.x + dx, at.y + 0.0075, at.z + dz);
     w.group.add(plate);
+    return [plate];
   },
-  radio_reversed: (w) => (w.ambience.find((a) => a.kind === 'radio')!.reversed = true),
+  radio_reversed: (w) => {
+    w.ambience.find((a) => a.kind === 'radio')!.reversed = true;
+  },
   radio_name: (w, r, _c, people) => {
     const name = someone(people, r).name || 'жилец';
     w.ambience.find((a) => a.kind === 'radio')!.announce = name;
@@ -350,6 +377,7 @@ const APPLY: Record<string, Apply> = {
       splash.scale.setScalar(0.8 + 0.25 * Math.abs(Math.sin(t * 9)));
     });
     w.emitters.push({ kind: 'stream', x: top.x, y: 0.95, z: top.z, range: 4.5 });
+    return [stream, splash];
   },
   kettle_whistle: (w) => {
     // the cold kettle on the cold stove whistles, and steam curls from its spout
@@ -384,7 +412,10 @@ const APPLY: Record<string, Apply> = {
 
   // --- bathroom and toilet ---
 
-  tub_full: (w) => (w.props.bath.water.visible = true),
+  tub_full: (w) => {
+    w.props.bath.water.visible = true;
+    return [w.props.bath.water];
+  },
   curtain_closed: (w) => {
     // the shower curtain is drawn, and somebody stands in the tub behind it
     const old = w.props.bath.curtain;
@@ -398,6 +429,7 @@ const APPLY: Record<string, Apply> = {
     const shape = silhouette();
     shape.position.set(22.62, 0.08, 7.35);
     w.group.add(c, shape);
+    return [c, shape];
   },
   mirror_writing: (w) => {
     // "you have been here before", written with a finger on the steamed-up mirror
@@ -429,6 +461,7 @@ const APPLY: Record<string, Apply> = {
     const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.46), lit(w, { x: 23.65, z: 7.8 }, { map: fog, transparent: true, depthWrite: false, roughness: 0.9 }));
     glass.position.set(0, 0.23, 0.0105);
     m.parent!.add(glass);
+    return [glass];
   },
   cistern_running: (w) => {
     const p = worldAt(w.props.bath.cistern, 0, 0.13, 0.1);
@@ -441,8 +474,12 @@ const APPLY: Record<string, Apply> = {
     const map = w.props.living.wallCarpet.material.map!;
     map.center.set(0.5, 0.5);
     map.rotation = Math.PI;
+    return [w.props.living.wallCarpet];
   },
-  carpet_other: (w) => setMap(w.props.living.wallCarpet.material, carpet(3, 1)),
+  carpet_other: (w) => {
+    setMap(w.props.living.wallCarpet.material, carpet(3, 1));
+    return [w.props.living.wallCarpet];
+  },
   tv_on: (w, r) => {
     // The TV is on: snow, or a line of text through it, and its flicker on the floor. The snow is
     // a data texture: redrawing a canvas this often stalls some browsers on the read back.
@@ -499,8 +536,11 @@ const APPLY: Record<string, Apply> = {
     });
     const p = worldAt(screen);
     w.emitters.push({ kind: 'tv', x: p.x, y: p.y, z: p.z, range: 5 });
+    return [screen];
   },
-  crystal_gone: (w, r) => (pick(w.props.living.crystal, r).visible = false),
+  crystal_gone: (w, r) => {
+    pick(w.props.living.crystal, r).visible = false;
+  },
   chandelier_swing: (w) => {
     // the chandelier swings slowly on its hook, its light breathing with it, the hook creaking
     const lamp = roomLamps(w, 'living')[0];
@@ -510,11 +550,17 @@ const APPLY: Record<string, Apply> = {
       const s = Math.sin((2 * Math.PI * t) / P);
       g.rotation.x = 0.1 * s;
       g.rotation.z = 0.035 * Math.sin((2 * Math.PI * t) / P + 1.2);
-      lamp.set(1 - 0.05 * Math.abs(s));
+      // a morok's light doesn't breathe with it
+      if (w.morok !== 'sight') lamp.set(1 - 0.05 * Math.abs(s));
     });
     w.emitters.push({ kind: 'creak', x: g.position.x, y: g.position.y, z: g.position.z, range: 6, every: P / 2, at: [P / 4], gain: 0.6 });
+    return [g];
   },
-  armchair_turned: (w, r) => (pick(w.props.living.armchairs, r).rotation.y += Math.PI),
+  armchair_turned: (w, r) => {
+    const chair = pick(w.props.living.armchairs, r);
+    chair.rotation.y += Math.PI;
+    return [chair];
+  },
   portrait_eyes: (w) => {
     // the pupils follow whoever is in the room
     const c = w.props.living.portraitCanvas;
@@ -536,6 +582,7 @@ const APPLY: Record<string, Apply> = {
       const oy = THREE.MathUtils.clamp((eye.y - 0.05) / d, -1, 1) * 2 * px;
       for (const p of pupils) p.position.set(p.userData.home.x + ox, p.userData.home.y + oy, p.userData.home.z);
     });
+    return [c];
   },
   clock_stopped: (w) => {
     w.props.living.clock.running = false;
@@ -556,6 +603,7 @@ const APPLY: Record<string, Apply> = {
     door.parent!.add(gap);
     const at = worldAt(door.parent!, ww / 4, 1.2, wd / 2 + 0.3);
     w.emitters.push({ kind: 'creak', x: at.x, y: at.y, z: at.z, range: 4.5, near: 3 });
+    return [door, gap];
   },
   eyes_under_bed: (w, r) => {
     // two points shining from under the bed, blinking now and then
@@ -582,6 +630,7 @@ const APPLY: Record<string, Apply> = {
       eyes.scale.y = shut ? 0.1 : 1;
       pool.visible = !shut;
     });
+    return [eyes];
   },
   bed_unmade: (w, r) => {
     // the bedspread lies crumpled on the floor; a dent in one pillow
@@ -609,12 +658,14 @@ const APPLY: Record<string, Apply> = {
     dent.rotation.x = -Math.PI / 2;
     dent.position.set(20.02, 0.642, 10.66);
     w.group.add(dent);
+    return [heap, dent];
   },
   cot_rocking: (w) => {
     const cot = w.props.bedroom.cot;
     const P = 2.6;
     w.updaters.push((t) => (cot.rotation.x = 0.06 * Math.sin((2 * Math.PI * t) / P)));
     w.emitters.push({ kind: 'creak', x: cot.position.x, y: 0.6, z: cot.position.z, range: 5, every: P / 2, at: [P / 4], gain: 0.7 });
+    return [cot];
   },
   jars_extra: (w) => {
     // a fourth jar on the lower shelf, its brine gone cloudy
@@ -634,6 +685,7 @@ const APPLY: Record<string, Apply> = {
     cyl(0.068, 0.17, murk, 0.005);
     cyl(0.075, 0.22, glass, 0);
     cyl(0.06, 0.02, cap, 0.22);
+    return [jar];
   },
 
   // --- light ---
@@ -706,6 +758,7 @@ const APPLY: Record<string, Apply> = {
     pane.position.set(win.x, win.y, win.z);
     pane.rotation.y = YAW[win.facing];
     w.group.add(pane);
+    return [pane];
   },
   windows_dark: (w) => {
     darkenYard(w.group.getObjectByName('yard')!);
@@ -723,6 +776,7 @@ const APPLY: Record<string, Apply> = {
     wall.position.set(p.x, 1, p.z);
     wall.rotation.y = YAW[INWARD[win.side]];
     w.group.add(wall);
+    return [wall];
   },
   fog_horizon: (w) => {
     // A rusty glow creeping through the night murk above the roofs: a samosbor somewhere else. It is
@@ -782,8 +836,11 @@ const APPLY: Record<string, Apply> = {
       c.headYaw += (want - c.headYaw) * Math.min(1, dt * 3);
       c.animate(dt, time, 0, -0.15, 0);
     });
+    return [c.root];
   },
-  follower: (w) => (w.follower = true),
+  follower: (w) => {
+    w.follower = true;
+  },
   radiator_knock: (w, r) => {
     // somebody knocking on the heating pipes, in a rhythm: knock-knock-knock, knock-knock
     const spots = [
@@ -810,14 +867,36 @@ const APPLY: Record<string, Apply> = {
     }
     w.emitters.push({ kind: 'cry', x: p.x, y: p.y, z: p.z, range: 7, every: 6.5, at: [0.5], gain: 6 });
   },
-  silence: (w) => (w.silent = true),
+  silence: (w) => {
+    w.silent = true;
+  },
 };
 
 // Every catalogued anomaly must have an implementation; fail loudly during development.
 for (const a of ANOMALIES) if (!APPLY[a.id]) console.error(`anomaly "${a.id}" has no implementation`);
 
-export function applyAnomaly(w: World, id: string, seed: number, cycle: number, people: People) {
+/**
+ * Changes a freshly built cell. A morok (an anomaly that isn't there, shown to this player alone)
+ * is the same anomaly with its tell: one seen shimmers and makes no sound and no light, one heard
+ * plays dry.
+ */
+export function applyAnomaly(w: World, id: string, seed: number, cycle: number, people: People, morok = false) {
   if (!APPLY[id]) return;
   w.anomaly = id;
-  APPLY[id](w, rng(seed), cycle, people);
+  const kind = morok ? ANOMALIES.find((a) => a.id === id)?.morok : undefined;
+  if (morok && !kind) {
+    if (import.meta.env.DEV) console.error(`anomaly "${id}" can't be a morok`);
+    return;
+  }
+  w.morok = kind ?? null;
+  const emitters = w.emitters.length;
+  const changed = APPLY[id](w, rng(seed), cycle, people) ?? [];
+  if (kind === 'sight') {
+    w.emitters.length = emitters;
+    if (import.meta.env.DEV && !changed.length) console.error(`anomaly "${id}" doesn't say what to shimmer`);
+    shimmer(w, changed);
+  } else if (kind === 'sound') {
+    for (const e of w.emitters) e.dry = true;
+    for (const a of w.ambience) if (a.reversed || a.announce) a.dry = true;
+  }
 }

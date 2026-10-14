@@ -27,6 +27,14 @@ export function maxDifficulty(cycle: number) {
   return cycle < 2 ? 1 : cycle < 5 ? 2 : 3;
 }
 
+/**
+ * Chance that a clean cycle shows one player a morok: an anomaly that isn't there, with a tell of
+ * its own (docs/DESIGN.md, 6). From floor 3, with two players or more.
+ */
+export function morokChance(cycle: number, players: number) {
+  return players < 2 ? 0 : Math.max(0, Math.min(0.35, 0.1 * (cycle - 2)));
+}
+
 /** Chance that an anomaly is shown to only one player. Needs at least two players. */
 export function privateChance(cycle: number, players: number) {
   return players < 2 ? 0 : Math.min(0.5, 0.1 * cycle);

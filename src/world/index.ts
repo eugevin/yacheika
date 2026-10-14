@@ -60,6 +60,8 @@ export interface Emitter {
   near?: number;
   /** How loud, 1 by default. */
   gain?: number;
+  /** A morok's sound: no reverb of the room, and a wall dulls only its loudness, not its top: as if heard inside the head. */
+  dry?: boolean;
 }
 
 /**
@@ -91,6 +93,8 @@ export interface World {
   won: boolean;
   /** The anomaly applied to this cell, if any (src/anomalies.ts). */
   anomaly: string | null;
+  /** It is a morok, with this tell (shared/anomalies.ts); then it makes no light, or no reverb. */
+  morok: 'sight' | 'sound' | null;
   /** Sounds the cell always makes (fridge, radio, clock...); anomalies may switch one off. */
   ambience: Ambient[];
   /** The whole background goes quiet: lamps, appliances, pipes (the "silence" anomaly). */
@@ -280,7 +284,7 @@ export function buildWorld(cycle: number, players: number, won = false): World {
       new THREE.MeshStandardMaterial({
         roughness: 0.9,
         map: signTexture(
-          ['ПАМЯТКА ЖИЛЬЦУ', '', 'При обнаружении отклонений —', 'немедленно вернуться назад.', 'Отклонений не обнаружено —', 'продолжать движение.', 'Покинув этаж —', 'ждать всех жильцов в тамбуре.', 'При самосборе —', 'сохранять спокойствие.'],
+          ['ПАМЯТКА ЖИЛЬЦУ', '', 'При обнаружении отклонений —', 'немедленно вернуться назад.', 'Отклонений не обнаружено —', 'продолжать движение.', 'Покинув этаж —', 'ждать всех жильцов в тамбуре.', 'При самосборе —', 'сохранять спокойствие.', 'Не всё, что видишь, —', 'отклонение. Морок дрожит,', 'как воздух над плитой.'],
           { w: 384, h: 512, bg: '#ece6d2', fg: '#2a2620', font: 'bold 22px serif', border: '#2a2620' },
         ),
       }),
@@ -311,6 +315,7 @@ export function buildWorld(cycle: number, players: number, won = false): World {
     floorTexture,
     won,
     anomaly: null,
+    morok: null,
     ambience: ambience(),
     silent: false,
     emitters: [],

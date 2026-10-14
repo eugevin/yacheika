@@ -523,7 +523,8 @@ function handle(msg: ServerMsg) {
       } else if (!msg.correct) {
         const a = msg.anomaly;
         const seen = a?.seenBy ? `, его видел(а) только ${a.seenBy}` : '';
-        aftermath = `${msg.split ? 'Группа разделилась поровну. ' : ''}${a ? `Отклонение: «${a.name}»${seen}` : 'Отклонений не было'}`;
+        const clean = msg.morok ? `Отклонений не было, морок видел(а) ${msg.morok.seenBy}` : 'Отклонений не было';
+        aftermath = `${msg.split ? 'Группа разделилась поровну. ' : ''}${a ? `Отклонение: «${a.name}»${seen}` : clean}`;
         startSamosbor();
       } else if (!tambourAt(walker.x, walker.z)) left = true;
       break;
@@ -571,7 +572,7 @@ function enterCycle(msg: Extract<ServerMsg, { t: 'cycle' }>, mode: 'loop' | 'sta
   walker.stairs = world.won;
   run = msg.run ?? null;
   const people: People = { self: { id: myId, name: ui.name.value.trim() || 'вы', color: myColor(), mask: myMask, outfit: myOutfit, flat: myFlat }, others: avatars.all };
-  for (const a of msg.anomalies) applyAnomaly(world, a.id, a.seed, msg.cycle, people);
+  for (const a of msg.anomalies) applyAnomaly(world, a.id, a.seed, msg.cycle, people, a.morok === true);
   scene.add(world.group);
   // Compile whatever new shaders the cell needs now, in the background where the browser can:
   // compiled on first sight, an anomaly would stall the frame you first look at it.
@@ -611,7 +612,7 @@ function showFinal() {
   const time = run ? `${Math.floor(run.ms / 60000)}:${String(Math.floor(run.ms / 1000) % 60).padStart(2, '0')}` : '—';
   const s = run?.samosbors ?? 0;
   ui.finalStats.replaceChildren(
-    ...[`Этаж: ${goal}`, `Время обхода: ${time}`, `Самосборов за обход: ${s}`].map((t) => {
+    ...[`Этаж: ${goal}`, `Время обхода: ${time}`, `Самосборов за обход: ${s}`, `Поддались мороку: ${run?.moroks ?? 0}`].map((t) => {
       const li = document.createElement('li');
       li.textContent = t;
       return li;
@@ -630,9 +631,10 @@ if (import.meta.env.DEV) {
       anomalies: () => ANOMALIES.map((a) => a.id),
       voice: () => voice,
       sound: () => sound,
-      preview(id?: string, cycle = 3, seed = Date.now()) {
+      preview(id?: string, cycle = 3, seed = Date.now(), o: { morok?: boolean } = {}) {
         const { x, z, yaw, pitch } = walker;
-        enterCycle({ t: 'cycle', phase: 'playing', cycle, goal: 10, cycleId: shownCycleId, anomalies: id ? [{ id, seed }] : [] });
+        const anomalies = id ? [{ id, seed, ...(o.morok ? { morok: true as const } : {}) }] : [];
+        enterCycle({ t: 'cycle', phase: 'playing', cycle, goal: 10, cycleId: shownCycleId, anomalies });
         Object.assign(walker, { x, z, yaw, pitch });
         // a new cycle hides avatars until their next position, and the ghost gets none from the server
         if (ghostAt) avatars.setPos(-1, ...ghostAt);
@@ -648,9 +650,9 @@ if (import.meta.env.DEV) {
         samosborHeld = hold;
       },
       /** The cell after the last floor, around where you stand, as if the group had just won. */
-      win(samosbors = 2) {
+      win(samosbors = 2, moroks = 1) {
         enterCycle(
-          { t: 'cycle', phase: 'won', cycle: 10, goal: 10, cycleId: shownCycleId, anomalies: [], run: { ms: 754_000, samosbors } },
+          { t: 'cycle', phase: 'won', cycle: 10, goal: 10, cycleId: shownCycleId, anomalies: [], run: { ms: 754_000, samosbors, moroks } },
           'stay',
         );
       },

@@ -9,7 +9,8 @@ A cooperative game about a group of residents walking the same cell (*yacheika*)
 - **A mistake** sets off a samosbor (section 7) and the next cell starts from floor 0. What was missed is told in a caption afterwards: «Самосбор окончен. Отклонение: горит конфорка».
 - **Anomalies** (section 6) appear in `ANOMALY_CHANCE` (60%) of cycles, never in the first cycle of a run (so everyone sees what normal looks like), and never repeat within the last `RECENT_LIMIT` (6) cycles. The hardest tier allowed grows with the streak: tier 1 on floors 0–1, up to 2 on floors 2–4, up to 3 from floor 5.
 - **Private anomalies.** With two or more players an anomaly may be shown to one player only (chance `0.1 × floor`, at most 50%). That player has to convince the rest.
-- **The rules** hang on the corridor wall as «ПАМЯТКА ЖИЛЬЦУ»: «При обнаружении отклонений — немедленно вернуться назад. Отклонений не обнаружено — продолжать движение. Покинув этаж — ждать всех жильцов в тамбуре. При самосборе — сохранять спокойствие.»
+- **Morok.** In a cycle that came up clean, with two or more players, from floor 3, one player may be shown an anomaly that isn't there (chance `0.1 × (floor − 2)`, at most 35%). The right answer is still forward; turning back because of it is a samosbor, and afterwards «Отклонений не было, морок видел(а) Петров». A morok has a tell of its own (section 6.1); the end report counts how many times the group fell for one.
+- **The rules** hang on the corridor wall as «ПАМЯТКА ЖИЛЬЦУ»: «При обнаружении отклонений — немедленно вернуться назад. Отклонений не обнаружено — продолжать движение. Покинув этаж — ждать всех жильцов в тамбуре. При самосборе — сохранять спокойствие. Не всё, что видишь, — отклонение. Морок дрожит, как воздух над плитой.»
 - Up to 6 players per room (`MAX_PLAYERS`). Players don't collide with each other.
 
 ## 2. The cell
@@ -91,7 +92,7 @@ Every surface has colour, relief and roughness maps. Common details: skirting bo
 
 - **Lobby:** a «ОБЪЯВЛЕНИЕ» sheet on a cork board, in typewriter type. Fields: «Фамилия жильца» (name), «Номер блока» (room code), «Средства защиты» (clothing and gear, with an ID photo), «Связь» (voice chat).
 - **Esc:** «Журнал дежурного» — residents, «Начать обход», graphics quality, settings (mouse sensitivity, sound and voice volume), controls and rules.
-- **Final screen** at the bottom of the stairs after a win: «АКТ об окончании обхода» with the time and the number of samosbors.
+- **Final screen** at the bottom of the stairs after a win: «АКТ об окончании обхода» with the time, the number of samosbors and «Поддались мороку».
 - **Fault screen** («НЕИСПРАВНОСТЬ») when WebGL 2 won't start or the context is lost.
 
 ### 3.5. The yard
@@ -203,6 +204,15 @@ All sound is synthesised with Web Audio. The normal cell always sounds the same:
 - **3** — needs knowing the cell by heart.
 
 Any anomaly can be private (section 1). Anomalies that depend on the number of players (slippers, plates, the double) take it from the room's roster.
+
+### 6.1. Morok
+
+A morok is one of the anomalies below shown in a clean cycle, to one player, with a tell that a real anomaly never has. The same rule for every morok of a kind:
+
+- **Seen** (`morok: 'sight'`): what it is made of shimmers like air over a stove: it sways by a couple of pixels, its picture ripples, fine stripes drift up over it, more at the edges. Faint out of the corner of the eye, plain when looked at straight. And it touches nothing around it: no sound (a morok burner doesn't hiss, a morok TV is silent) and no light (no glow on the floor, a morok chandelier swings but its light stays still).
+- **Heard** (`morok: 'sound'`): dry, as if inside the head: no reverb of the room, and through a wall it gets quieter but not duller.
+
+A morok only adds or changes, never takes away: crystal gone, clock stopped, silence, all windows dark are always real, and so is anything made of light (light off, flickering lamp, wrong light, broken bulb, fog on the horizon).
 
 ### Landing and floor corridor
 

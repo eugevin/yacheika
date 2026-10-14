@@ -11,6 +11,7 @@ import {
   RECENT_LIMIT,
   SAMOSBOR_MS,
   maxDifficulty,
+  morokChance,
   privateChance,
 } from '../shared/rules.ts';
 import { iceServers } from './turn.ts';
@@ -87,6 +88,8 @@ export class Room {
   private cycle = 0;
   private cycleId = 0;
   private anomaly: Anomaly | null = null;
+  /** What one player is shown in a clean cycle: an anomaly that isn't there. */
+  private morok: (Anomaly & { only: number }) | null = null;
   private recent: string[] = [];
   private countdownEnd: number | null = null;
   /** When the verdict is due once the whole group is in the vestibules. */
@@ -96,6 +99,7 @@ export class Room {
   /** Tick time of the run's start, set on the first tick after it (tests pass their own clock). */
   private startedAt: number | null = null;
   private samosbors = 0;
+  private moroks = 0;
   private run: RunStats | null = null;
   private ticks = 0;
 
@@ -214,6 +218,7 @@ export class Room {
     this.recent = [];
     this.startedAt = null;
     this.samosbors = 0;
+    this.moroks = 0;
     this.run = null;
     this.newCycle(true);
   }
@@ -225,6 +230,7 @@ export class Room {
     this.countdownEnd = null;
     this.settleEnd = null;
     this.anomaly = first ? null : this.roll();
+    this.morok = first || this.anomaly ? null : this.rollMorok();
     for (const p of this.players.values()) p.entered = false;
     this.sendCycle();
   }
@@ -242,6 +248,18 @@ export class Room {
     return { id: a.id, name: a.name, seed: Math.floor(Math.random() * 2 ** 31), only };
   }
 
+  /** A morok for a clean cycle, maybe: drawn like an anomaly, from those that can be one. */
+  private rollMorok(): (Anomaly & { only: number }) | null {
+    const ids = [...this.players.keys()];
+    if (Math.random() >= morokChance(this.cycle, ids.length)) return null;
+    const tier = maxDifficulty(this.cycle);
+    const pool = ANOMALIES.filter((a) => a.morok && a.tier <= tier && (a.players ?? 1) <= ids.length && !this.recent.includes(a.id));
+    if (pool.length === 0) return null;
+    const a = rand(pool);
+    this.recent = [...this.recent, a.id].slice(-RECENT_LIMIT);
+    return { id: a.id, name: a.name, seed: Math.floor(Math.random() * 2 ** 31), only: rand(ids) };
+  }
+
   /**
    * Those who left decide, by majority; a tie is a samosbor. Whoever is still in the cell doesn't
    * break the pass: they are carried along behind a fade. A right choice starts the next cycle at
@@ -256,11 +274,13 @@ export class Room {
     const choice: Exit | null = split ? null : forward > back ? 'forward' : 'back';
     const correct = choice !== null && (choice === 'back') === (this.anomaly !== null);
     // one line per verdict, to see which anomalies nobody notices and which are too obvious
-    const seen = this.anomaly ? `${this.anomaly.id}${this.anomaly.only !== null ? ' (private)' : ''}` : 'clean';
+    const seen = this.anomaly ? `${this.anomaly.id}${this.anomaly.only !== null ? ' (private)' : ''}` : this.morok ? `clean (morok ${this.morok.id})` : 'clean';
     console.log(`verdict ${this.code} floor ${this.cycle}: ${seen}, ${choice ?? 'tie'}, ${correct ? 'right' : 'wrong'}, ${forward + back}/${choices.length} out`);
     this.cycle = correct ? this.cycle + 1 : 0;
     const won = this.cycle >= GOAL;
     const a = this.anomaly;
+    const m = this.morok;
+    if (m && choice === 'back') this.moroks++;
     this.broadcast({ t: 'countdown_off' });
     this.broadcast({
       t: 'result',
@@ -268,6 +288,7 @@ export class Room {
       split,
       choice,
       anomaly: a && { name: a.name, seenBy: a.only === null ? null : (this.players.get(a.only)?.name ?? '???') },
+      morok: m && { name: m.name, seenBy: this.players.get(m.only)?.name ?? '???' },
       cycle: this.cycle,
       won,
     });
@@ -276,6 +297,7 @@ export class Room {
       this.samosborEnd = now + SAMOSBOR_MS;
       this.samosbors++;
       this.anomaly = null;
+      this.morok = null;
       this.sendCycle();
       return;
     }
@@ -283,12 +305,13 @@ export class Room {
       this.newCycle(false);
       return;
     }
-    this.run = { ms: now - (this.startedAt ?? now), samosbors: this.samosbors };
+    this.run = { ms: now - (this.startedAt ?? now), samosbors: this.samosbors, moroks: this.moroks };
     this.phase = 'won';
     this.cycleId++;
     this.countdownEnd = null;
     this.settleEnd = null;
     this.anomaly = null;
+    this.morok = null;
     this.sendCycle();
   }
 
@@ -299,13 +322,14 @@ export class Room {
   private cycleFor(p: Player): ServerMsg {
     const a = this.anomaly;
     const visible = a && (a.only === null || a.only === p.id);
+    const m = this.morok?.only === p.id ? this.morok : null;
     return {
       t: 'cycle',
       phase: this.phase,
       cycle: this.cycle,
       goal: GOAL,
       cycleId: this.cycleId,
-      anomalies: visible ? [{ id: a.id, seed: a.seed }] : [],
+      anomalies: visible ? [{ id: a.id, seed: a.seed }] : m ? [{ id: m.id, seed: m.seed, morok: true }] : [],
       ...(this.phase === 'won' && this.run ? { run: this.run } : {}),
     };
   }

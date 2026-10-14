@@ -7,6 +7,8 @@ export type Phase = 'lobby' | 'playing' | 'samosbor' | 'won';
 export interface RunStats {
   ms: number;
   samosbors: number;
+  /** Samosbors the group brought on itself by turning back from a morok. */
+  moroks: number;
 }
 
 export interface PlayerInfo {
@@ -40,10 +42,11 @@ export type ServerMsg =
   | { t: 'left'; id: number }
   /**
    * Personal view of the current cycle. `anomalies` only lists what this player is allowed to see:
-   * an anomaly shown to someone else is never sent. A samosbor keeps the cycleId of the cycle it
+   * an anomaly shown to someone else is never sent. A morok (an anomaly that isn't there) comes
+   * flagged, to its witness only: to everyone else the cycle is a clean one. A samosbor keeps the cycleId of the cycle it
    * broke out in: the cell stays, only the phase changes. `run` comes with the phase 'won'.
    */
-  | { t: 'cycle'; phase: Phase; cycle: number; goal: number; cycleId: number; anomalies: { id: string; seed: number }[]; run?: RunStats }
+  | { t: 'cycle'; phase: Phase; cycle: number; goal: number; cycleId: number; anomalies: { id: string; seed: number; morok?: true }[]; run?: RunStats }
   // c: cycle each position belongs to; positions from another cycle are in the other corridor
   | { t: 'pos'; list: [id: number, x: number, z: number, yaw: number, pitch: number, c: number][] }
   | { t: 'countdown'; endsIn: number; forward: number; back: number; inside: number }
@@ -54,6 +57,8 @@ export type ServerMsg =
       split: boolean;
       choice: Exit | null;
       anomaly: { name: string; seenBy: string | null } | null;
+      /** What one player was shown in a clean cycle, told only after the choice. */
+      morok: { name: string; seenBy: string } | null;
       cycle: number;
       won: boolean;
     }

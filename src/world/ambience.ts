@@ -19,6 +19,8 @@ export interface Ambient {
   reversed?: boolean;
   /** Radio only: every so often the music drops and a voice through the static calls this name (an anomaly). */
   announce?: string;
+  /** Changed by a morok: no reverb of the room, and walls dull only its loudness (audio.ts, Wall.dry). */
+  dry?: boolean;
 }
 
 /** Positions match the props in rooms/*.ts. */
