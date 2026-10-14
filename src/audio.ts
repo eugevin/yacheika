@@ -19,7 +19,7 @@ const BUZZ_RANGE = 5;
 const STEP_GAIN = 0.07;
 const RUN_GAIN = 0.1;
 /** Loudness of the samosbor siren, set by measurement (AGENTS.md): loud, but not above an anomaly's peaks by much. */
-const SIREN_GAIN = 0.065;
+const SIREN_GAIN = 0.1;
 /** The siren's wail, Hz: the bottom of each swing and the top, where it settles once wound up. */
 const SIREN_LOW = 250;
 const SIREN_HIGH = 440;
