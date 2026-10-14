@@ -1,3 +1,4 @@
+import type * as THREE from 'three';
 import type { World } from './world/index.ts';
 
 /**
@@ -18,6 +19,17 @@ export interface Eye {
  * (72° high, about 105° wide on a wide screen), so a thing at the very edge isn't "seen".
  */
 export const CONE = { h: 0.75, v: 0.5 };
+
+/** Our own eye: the camera (player.ts turns it yaw first, then pitch). */
+export function eyeOf(camera: THREE.Camera): Eye {
+  const p = camera.position;
+  return { x: p.x, y: p.y, z: p.z, yaw: camera.rotation.y, pitch: camera.rotation.x };
+}
+
+/** Whether we or any teammate (World.teammates) see the point. */
+export function anyoneSees(w: World, camera: THREE.Camera, x: number, y: number, z: number) {
+  return [eyeOf(camera), ...w.teammates].some((e) => sees(w, e, x, y, z));
+}
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 

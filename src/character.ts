@@ -12,6 +12,8 @@ export interface Look {
   outfit: OutfitId;
   /** Flat number on the resident's card; 0 leaves it blank. */
   flat: number;
+  /** No face: smooth skin, or a gas mask without its glass (the "faceless" anomaly). */
+  blank?: boolean;
 }
 
 /** Bones of the rig. Every vertex belongs to exactly one of them, so the body is rigid pieces on pivots. */
@@ -288,8 +290,8 @@ function paintAtlas(look: Look, solids: string[]) {
     draw(r[2], r[3]);
     ctx.restore();
   };
-  at(ATLAS.face, g, () => paintFace(g, look.mask, false));
-  at(ATLAS.face, gg, () => paintFace(gg, look.mask, true));
+  at(ATLAS.face, g, () => paintFace(g, look.mask, false, look.blank));
+  at(ATLAS.face, gg, () => paintFace(gg, look.mask, true, look.blank));
   at(ATLAS.card, g, (w, h) => paintCard(g, w, h, look));
   at(ATLAS.armband, g, (w, h) => paintArmband(g, w, h, look.color));
   at(ATLAS.quilt, g, (w, h) => {
@@ -359,9 +361,10 @@ function paintArmband(g: CanvasRenderingContext2D, w: number, h: number, color: 
 
 /**
  * The face picture: a plain painted face under open gear, the rubber front of the gas mask under
- * the GP-5. The glow version is black where nothing lights up when talking.
+ * the GP-5. The glow version is black where nothing lights up when talking. A blank one has
+ * nothing on it.
  */
-function paintFace(g: CanvasRenderingContext2D, mask: MaskId, glow: boolean) {
+function paintFace(g: CanvasRenderingContext2D, mask: MaskId, glow: boolean, blank = false) {
   const ell = (x: number, y: number, rx: number, ry: number, fill: string) => {
     g.fillStyle = fill;
     g.beginPath();
@@ -372,6 +375,7 @@ function paintFace(g: CanvasRenderingContext2D, mask: MaskId, glow: boolean) {
   if (mask === 'gp5') {
     g.fillStyle = glow ? '#000' : '#3d433c';
     g.fillRect(0, 0, 128, 128);
+    if (blank) return;
     for (const x of [38, 90]) {
       ell(x, 54, 17, 17, glow ? '#000' : '#7b7f77');
       ell(x, 54, 13, 13, glow ? '#a6d4c0' : '#14201e');
@@ -381,7 +385,7 @@ function paintFace(g: CanvasRenderingContext2D, mask: MaskId, glow: boolean) {
   }
   g.fillStyle = glow ? '#000' : SKIN;
   g.fillRect(0, 0, 128, 128);
-  if (glow) return;
+  if (glow || blank) return;
   // brows, eyes, a hint of a nose, a mouth
   g.fillStyle = '#3a2a1e';
   g.fillRect(31, 41, 18, 3);

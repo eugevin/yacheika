@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DOORWAYS, ROOM_BY_ID, ROOMS, VESTIBULES, leafKey, leafRect, onSide, stairDepth, type Exit, type FloorKind, type RoomId, type Side, type WallKind } from '../../shared/map.ts';
 import { FURNITURE, type Piece } from '../../shared/furniture.ts';
 import type { Look } from '../character.ts';
+import type { Eye } from '../gaze.ts';
 import { canvasTexture, signTexture } from '../textures.ts';
 import { buildExterior, galleryMaterial } from './exterior.ts';
 import { bakedMaterial, type Spec } from './furniture.ts';
@@ -81,6 +82,8 @@ export interface AvatarOverrides {
   gaze: Set<number>;
   /** Teammates who look different this cycle. */
   look: Map<number, Look>;
+  /** One more resident walking with the group (stranger.ts). */
+  extra: Look | null;
 }
 
 export interface World {
@@ -103,6 +106,8 @@ export interface World {
   /** Footsteps that echo ours from behind. */
   follower: boolean;
   avatars: AvatarOverrides;
+  /** Where the other players look from, refreshed every frame by main.ts (Avatars.eyes), for gaze.ts. */
+  teammates: Eye[];
   /** Per-frame hooks added by the world itself and by anomalies. */
   updaters: ((t: number, dt: number, camera: THREE.Camera) => void)[];
   /** How long baking the light took, in ms (0 when it came from the cache). */
@@ -320,7 +325,8 @@ export function buildWorld(cycle: number, players: number, won = false): World {
     silent: false,
     emitters: [],
     follower: false,
-    avatars: { gaze: new Set(), look: new Map() },
+    avatars: { gaze: new Set(), look: new Map(), extra: null },
+    teammates: [],
     updaters,
     bakeMs,
     props,

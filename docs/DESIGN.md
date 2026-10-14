@@ -198,7 +198,7 @@ All sound is synthesised with Web Audio. The normal cell always sounds the same:
 
 ## 6. Anomalies
 
-53 anomalies (`shared/anomalies.ts`), three tiers:
+58 anomalies (`shared/anomalies.ts`), three tiers:
 - **1** — obvious at once;
 - **2** — needs attention;
 - **3** — needs knowing the cell by heart.
@@ -310,6 +310,18 @@ A morok only adds or changes, never takes away: crystal gone, clock stopped, sil
 | Neighbours drilling | 1 | A drill behind the corridor wall |
 | Crying behind the wall | 2 | A child crying quietly in a neighbouring flat |
 | Silence | 3 | All background sound of the cell is gone |
+
+### The group
+
+These need a teammate, so they come only with two players or more.
+
+| Anomaly | Tier | What it looks like |
+|---|---|---|
+| Looks at you | 2 | On one screen only, a teammate's head keeps turning to you, further than a neck should, wherever they really look |
+| Faceless | 2 | One resident has no face, or a gas mask without its glass, or other gear than picked in the lobby; everyone sees it but them |
+| Extra | 2 | One more resident from flat 49 waits on the landing, follows the group a couple of metres behind and never leaves the cell; the countdown and the duty log count them |
+| Don't look | 3 | While nobody looks, a dark figure at the far end of the corridor stands a step closer, or an armchair turns further |
+| Only together | 3 | «ВЫ НЕ ОДНИ» in chalk under the floor stencil, or a figure at the corridor window, seen only while two people look at it at once |
 
 "Radio says a name" writes the name on the radio's front and speaks it with the browser's speech synthesis; without a Russian voice, a formant synthesiser murmurs its vowels.
 

@@ -4,7 +4,9 @@ import type { PlayerInfo } from '../shared/protocol.ts';
 import { Character } from './character.ts';
 import type { Eye } from './gaze.ts';
 import { STEP_LEN } from './player.ts';
-import type { AvatarOverrides } from './world/index.ts';
+import { shimmer } from './morok.ts';
+import { Stranger } from './stranger.ts';
+import type { World } from './world/index.ts';
 
 const MARK_LIFE = 4;
 /** How far a head turned to us by an anomaly may go: further than a neck should. */
@@ -35,6 +37,8 @@ export class Avatars {
   private marks: { obj: THREE.Group; age: number }[] = [];
   /** Heads that turn to us this cycle (AvatarOverrides.gaze). */
   private gaze = new Set<number>();
+  /** One more resident, this cycle only (AvatarOverrides.extra). */
+  private stranger: Stranger | null = null;
   /** Called when another player takes a step, derived from how far their avatar moved. */
   onStep: ((x: number, z: number, run: boolean) => void) | null = null;
 
@@ -65,6 +69,11 @@ export class Avatars {
 
   get all() {
     return [...this.list.values()].map((a) => a.info);
+  }
+
+  /** The extra resident, if this cycle has one: for the duty log and the countdown, never for the roster. */
+  get extra(): PlayerInfo | null {
+    return this.stranger && { id: 0, ...this.stranger.look };
   }
 
   setPos(id: number, x: number, z: number, yaw: number, pitch: number) {
@@ -103,13 +112,20 @@ export class Avatars {
   }
 
   /**
-   * What the new cycle's anomaly does to the avatars, or nothing: the stand-ins of the last one go
-   * and the residents come back as they joined.
+   * What the new cycle's anomaly does to the avatars (World.avatars): the stand-ins of the last one
+   * go and the residents come back as they joined. A morok's stand-in shimmers like any morok.
    */
-  override(o: AvatarOverrides | null) {
-    this.gaze = new Set(o?.gaze);
+  override(w: World) {
+    const o = w.avatars;
+    this.gaze = new Set(o.gaze);
+    if (this.stranger) {
+      this.root.remove(this.stranger.char.root);
+      this.stranger.dispose();
+    }
+    this.stranger = o.extra && new Stranger(o.extra, STEP_LEN, (x, z, run) => this.onStep?.(x, z, run));
+    if (this.stranger) this.root.add(this.stranger.char.root);
     for (const [id, a] of this.list) {
-      const look = o?.look.get(id);
+      const look = o.look.get(id);
       if (a.char === a.own && !look) {
         a.char.headYaw = 0;
         continue;
@@ -123,6 +139,7 @@ export class Avatars {
       if (a.char !== a.own) a.char.dispose();
       this.root.add(next.root);
       a.char = next;
+      if (look && w.morok === 'sight') shimmer(w, [next.root]);
     }
   }
 
@@ -132,7 +149,8 @@ export class Avatars {
     for (const a of this.list.values()) {
       if (!a.char.root.visible) continue;
       const p = a.char.root.position;
-      list.push({ x: p.x, y: p.y + EYE_H, z: p.z, yaw: a.char.root.rotation.y, pitch: a.pitch });
+      // where they really look, not where the smoothed body has turned to yet
+      list.push({ x: p.x, y: p.y + EYE_H, z: p.z, yaw: a.yaw, pitch: a.pitch });
     }
     return list;
   }
@@ -162,6 +180,8 @@ export class Avatars {
   /** Takes each avatar's light from where it stands. */
   light(probe: (x: number, z: number, out: Character['probe']) => void) {
     for (const a of this.list.values()) if (a.char.root.visible) probe(a.char.root.position.x, a.char.root.position.z, a.char.probe);
+    const s = this.stranger?.char;
+    if (s) probe(s.root.position.x, s.root.position.z, s.probe);
   }
 
   /** `eye`: the camera, for heads that turn to it. */
@@ -191,6 +211,11 @@ export class Avatars {
         pitch = Math.atan2(eye.y - head, Math.hypot(eye.x - pos.x, eye.z - pos.z));
       }
       a.char.animate(dt, t, moved, pitch, a.talk);
+    }
+    if (this.stranger) {
+      const people = [{ x: eye.x, z: eye.z }];
+      for (const a of this.list.values()) if (a.char.root.visible) people.push(a.char.root.position);
+      this.stranger.update(dt, t, people);
     }
     this.marks = this.marks.filter((m) => {
       m.age += dt;

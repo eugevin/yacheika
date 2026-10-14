@@ -277,7 +277,7 @@ function showPause(show: boolean) {
 function renderPause() {
   const me = { id: myId, name: ui.name.value.trim() || 'вы', color: myColor(), outfit: myOutfit, mask: myMask, flat: myFlat };
   ui.players.replaceChildren(
-    ...[me, ...avatars.all]
+    ...[me, ...avatars.all, ...(avatars.extra ? [avatars.extra] : [])]
       .sort((a, b) => a.flat - b.flat)
       .map((p) => {
         const tr = document.createElement('tr');
@@ -505,7 +505,9 @@ function handle(msg: ServerMsg) {
     case 'countdown': {
       const s = Math.ceil(msg.endsIn / 1000);
       const parts = [`наверх ${msg.forward}`, `вниз ${msg.back}`];
-      if (msg.inside) parts.push(`в пути ${msg.inside}`);
+      // the extra resident is still in the cell, on the screens that see it
+      const inside = msg.inside + (avatars.extra ? 1 : 0);
+      if (inside) parts.push(`в пути ${inside}`);
       // whoever is out already is told to stay: walking on to the dead end is fine, coming back is not
       const wait = tambourAt(walker.x, walker.z) ? 'Ожидайте остальных в тамбуре · ' : '';
       banner(`${wait}Гермодверь закроется через ${s} с · ${parts.join(' · ')}`);
@@ -594,7 +596,9 @@ function enterCycle(msg: Extract<ServerMsg, { t: 'cycle' }>, mode: 'loop' | 'sta
     walker.place(spawn.x, spawn.z, spawn.yaw);
   }
   avatars.loop(mode);
-  avatars.override(world.avatars);
+  avatars.override(world);
+  // the duty log lists an extra resident while there is one
+  renderPause();
   shownCycleId = msg.cycleId;
   shownPhase = msg.phase;
   if (aftermath && msg.phase === 'playing') caption(`Самосбор окончен. ${aftermath}. Этаж ${msg.cycle}.`, 7);
@@ -630,6 +634,7 @@ if (import.meta.env.DEV) {
     yacheika: {
       anomalies: () => ANOMALIES.map((a) => a.id),
       voice: () => voice,
+      avatars: () => avatars,
       sound: () => sound,
       preview(id?: string, cycle = 3, seed = Date.now(), o: { morok?: boolean } = {}) {
         const { x, z, yaw, pitch } = walker;
@@ -745,7 +750,10 @@ renderer.setAnimationLoop((now) => {
   }
   ui.veil.style.opacity = String(samosbor?.veil ?? 0);
   ui.warp.style.opacity = String(samosbor?.warp ?? 0);
-  if (world) for (const u of world.updaters) u(t, dt, camera);
+  if (world) {
+    world.teammates = avatars.eyes();
+    for (const u of world.updaters) u(t, dt, camera);
+  }
   if (world?.won && !finalShown && stairDepth(walker.x, walker.z) <= -STAIRS.drop + 0.01) showFinal();
 
   ui.fade.style.opacity = String(fade);

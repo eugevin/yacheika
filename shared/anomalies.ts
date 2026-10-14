@@ -79,6 +79,11 @@ export const ANOMALIES: AnomalyInfo[] = [
   { id: 'fog_horizon', name: 'Туман у горизонта', tier: 3 },
   // players and sounds
   { id: 'double', name: 'Двойник', tier: 2, morok: 'sight' },
+  { id: 'gaze', name: 'Смотрит на тебя', tier: 2, players: 2, only: 'always' },
+  { id: 'faceless', name: 'Без лица', tier: 2, players: 2, only: 'never', morok: 'sight' },
+  { id: 'extra', name: 'Лишний', tier: 2, players: 2 },
+  { id: 'dont_look', name: 'Не смотри', tier: 3, players: 2, morok: 'sight' },
+  { id: 'together', name: 'Только вдвоём', tier: 3, players: 2, only: 'never' },
   { id: 'follower', name: 'Шаги за спиной', tier: 3, morok: 'sound' },
   { id: 'radiator_knock', name: 'Стук по батарее', tier: 2, morok: 'sound' },
   { id: 'drill', name: 'Соседи сверлят', tier: 1, morok: 'sound' },

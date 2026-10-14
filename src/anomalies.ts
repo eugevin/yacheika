@@ -5,7 +5,9 @@ import { ROOM_BY_ID, ROOMS, onSide, type RoomId } from '../shared/map.ts';
 import { MASKS, OUTFITS } from '../shared/masks.ts';
 import type { PlayerInfo } from '../shared/protocol.ts';
 import { Character, type Look } from './character.ts';
+import { anyoneSees, eyeOf, sees } from './gaze.ts';
 import { shimmer } from './morok.ts';
+import { STRANGER_NAMES } from './stranger.ts';
 import { canvasTexture, rng } from './textures.ts';
 import { darkenWindows } from './world/exterior.ts';
 import { cloth } from './world/furniture.ts';
@@ -838,6 +840,120 @@ const APPLY: Record<string, Apply> = {
     });
     return [c.root];
   },
+  gaze: (w, r, _c, people) => {
+    // On this screen alone, one teammate's head keeps turning to us, whatever they look at.
+    if (people.others.length) w.avatars.gaze.add(pick(people.others, r).id);
+  },
+  faceless: (w, r, _c, people) => {
+    // One resident has no face, or wears gear other than the one picked in the lobby. Picked from
+    // the whole roster in the same order on every screen, so everyone sees the same one, and they
+    // alone don't; a morok, seen by one, is always somebody else.
+    const all = w.morok ? people.others : [people.self, ...people.others].sort((a, b) => a.id - b.id);
+    if (!all.length) return;
+    const p = pick(all, r);
+    // the welding mask hides the face anyway
+    const blank = p.mask !== 'welder' && r() < 0.6;
+    w.avatars.look.set(p.id, blank ? { ...p, blank } : { ...p, mask: pick(MASKS.filter((m) => m.id !== p.mask), r).id });
+  },
+  extra: (w, r) => {
+    // One more resident walks with the group, from flat 49: the one they walk through, nobody's.
+    w.avatars.extra = { name: pick(STRANGER_NAMES, r), color: '#7d776b', mask: pick(MASKS, r).id, outfit: pick(OUTFITS, r).id, flat: 49 };
+  },
+  dont_look: (w, r) => {
+    // Something moves while nobody looks at it: a dark figure at the far end of the corridor stands
+    // a step closer each time, or an armchair turns a little further. A step comes after two
+    // seconds out of everyone's sight (gaze.ts); each screen goes by its own view of the group.
+    let subject: THREE.Object3D;
+    let step: (n: number) => void;
+    let max: number;
+    let y: number;
+    if (r() < 0.5) {
+      const shape = silhouette();
+      const z = 0.9 + r() * 1.2;
+      shape.position.set(28, 0, z);
+      w.group.add(shape);
+      // from the window up the corridor, every other step under a lamp (where it shows best),
+      // stopping well short of the landing
+      step = (n) => (shape.position.x = 28 - 2.5 * n);
+      [subject, max, y] = [shape, 7, 1.3];
+    } else {
+      const chair = pick(w.props.living.armchairs, r);
+      const y0 = chair.rotation.y;
+      const dir = r() < 0.5 ? -1 : 1;
+      step = (n) => (chair.rotation.y = y0 + dir * 0.3 * n);
+      // above the seat: a point inside the chair would be hidden by the chair itself
+      [subject, max, y] = [chair, 5, 1.05];
+    }
+    const p = V();
+    let n = 0;
+    let away = 0;
+    let check = 0;
+    let seen = true;
+    w.updaters.push((_t, dt, cam) => {
+      if ((check -= dt) <= 0) {
+        check = 0.2;
+        subject.getWorldPosition(p);
+        seen = anyoneSees(w, cam, p.x, y, p.z);
+      }
+      away = seen ? 0 : away + dt;
+      if (away >= 2 && n < max) {
+        step(++n);
+        away = 0;
+      }
+    });
+    return [subject];
+  },
+  together: (w, r) => {
+    // Seen only while two people look at it at once: «ВЫ НЕ ОДНИ» in chalk on the green paint under
+    // the floor stencil, where a group coming out of the tambour looks together, or a figure at the
+    // window at the end of the corridor. It fades in when we and a teammate both see it, and out
+    // when not.
+    let thing: THREE.Object3D;
+    let mats: THREE.Material[];
+    let at: THREE.Vector3;
+    if (r() < 0.5) {
+      const words = canvasTexture(512, 128, (g, cw, ch) => {
+        g.fillStyle = 'rgba(222,218,204,0.85)';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.font = 'bold 84px sans-serif';
+        // fitted to the sheet whatever the system's sans is
+        g.font = `bold ${Math.floor(84 * Math.min(1, (cw - 40) / g.measureText('ВЫ НЕ ОДНИ').width))}px sans-serif`;
+        g.fillText('ВЫ НЕ ОДНИ', cw / 2, ch / 2);
+      });
+      const landing = ROOM_BY_ID.landing.rect;
+      const mat = lit(w, { x: 1.5, z: 2.5 }, { map: words, transparent: true, opacity: 0, depthWrite: false, roughness: 0.6 });
+      thing = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.3), mat);
+      thing.position.set((landing.x0 + landing.x1) / 2, 1.05, landing.z1 - 0.03);
+      thing.rotation.y = Math.PI;
+      [mats, at] = [[mat], V(thing.position.x, 1.05, landing.z1 - 0.1)];
+    } else {
+      thing = silhouette();
+      thing.position.set(28.35, 0, 1.5 + (r() - 0.5) * 0.6);
+      mats = [];
+      thing.traverse((o) => {
+        if (o instanceof THREE.Mesh) {
+          o.material = o.material.clone();
+          o.material.transparent = true;
+          o.material.opacity = 0;
+          mats.push(o.material);
+        }
+      });
+      at = V(thing.position.x, 1.3, thing.position.z);
+    }
+    w.group.add(thing);
+    let check = 0;
+    let both = false;
+    let shown = 0;
+    w.updaters.push((_t, dt, cam) => {
+      if ((check -= dt) <= 0) {
+        check = 0.2;
+        both = sees(w, eyeOf(cam), at.x, at.y, at.z) && w.teammates.some((e) => sees(w, e, at.x, at.y, at.z));
+      }
+      shown = THREE.MathUtils.clamp(shown + (both ? dt / 0.6 : -dt), 0, 1);
+      for (const m of mats) m.opacity = shown;
+    });
+  },
   follower: (w) => {
     w.follower = true;
   },
@@ -893,7 +1009,8 @@ export function applyAnomaly(w: World, id: string, seed: number, cycle: number, 
   const changed = APPLY[id](w, rng(seed), cycle, people) ?? [];
   if (kind === 'sight') {
     w.emitters.length = emitters;
-    if (import.meta.env.DEV && !changed.length) console.error(`anomaly "${id}" doesn't say what to shimmer`);
+    // a teammate's stand-in shimmers once the avatars put it on (avatars.ts)
+    if (import.meta.env.DEV && !changed.length && !w.avatars.look.size) console.error(`anomaly "${id}" doesn't say what to shimmer`);
     shimmer(w, changed);
   } else if (kind === 'sound') {
     for (const e of w.emitters) e.dry = true;
