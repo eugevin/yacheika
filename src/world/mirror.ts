@@ -6,7 +6,8 @@ import { LAYERS } from './layers.ts';
 /**
  * A real reflection (docs/DESIGN.md, 4.4), laid over a mirror's glass. It draws only what it can
  * show: its own `view` layer (world/index.ts puts the rooms around each mirror there), whatever is
- * added to the world later on layer 0 (players, anomalies) and `extra` layers. It renders only while
+ * added to the world later on layer 0 (players, anomalies), our own figure (`self`) and `extra`
+ * layers. It renders only while
  * on screen and the camera stands in one of `from`, so a mirror seen through walls costs nothing.
  * Hidden in low quality, where the glass under it is left.
  */
@@ -24,6 +25,7 @@ export function realMirror(w: number, h: number, view: number, from: RoomId[], e
     const c = reflected(camera);
     c.layers.set(0);
     c.layers.enable(view);
+    c.layers.enable(LAYERS.self);
     for (const l of extra) c.layers.enable(l);
     return c;
   };

@@ -85,6 +85,7 @@ Every surface has colour, relief and roughness maps. Common details: skirting bo
 - A «ДНД» armband on the left shoulder in the player's colour, visible from the side and behind.
 - An ID card on the chest with the surname and flat number (41–48), readable up close.
 - Speaking makes the gear glow faintly. Characters take the baked light of the point they stand on.
+- **Your own body** is the same character: looking down you see your chest with the ID card, your legs and, when walking, your hands, in step with the footsteps. The head isn't drawn for your own eyes; the mirrors show the whole figure, mask included.
 
 ### 3.4. Interface
 
@@ -138,7 +139,7 @@ Each room gets an environment map captured once from its centre after the bake; 
 
 ### 4.4. Mirrors
 
-Three mirrors are real reflections (`Reflector`): the hallway mirror, the small one over the washbasin and the middle panel of the bedroom dresser (its turned wings keep the room's environment map). Each is rendered at reduced resolution, only while on screen and only while the player stands in a room it can be seen from, and shows only the rooms around it plus players and anomalies. The hallway one is needed for "Extra in the mirror": that figure lives on a layer only that mirror sees. On low quality there are no reflections: the hallway mirror is frosted glass, the other two are plain glossy glass.
+Three mirrors are real reflections (`Reflector`): the hallway mirror, the small one over the washbasin and the middle panel of the bedroom dresser (its turned wings keep the room's environment map). Each is rendered at reduced resolution, only while on screen and only while the player stands in a room it can be seen from, and shows only the rooms around it plus players (yourself included) and anomalies. The hallway one is needed for "Extra in the mirror": that figure lives on a layer only that mirror sees. On low quality there are no reflections: the hallway mirror is frosted glass, the other two are plain glossy glass.
 
 ### 4.5. Post-processing
 

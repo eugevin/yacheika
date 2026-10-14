@@ -508,6 +508,11 @@ export class Character {
     b[BONE.armR].rotation.set(0.75, 0, 0.04);
   }
 
+  /** Our own body seen from inside the head: the head and all it wears fold to a point. */
+  hideHead() {
+    this.b[BONE.head].scale.setScalar(0);
+  }
+
   dispose() {
     this.mesh.geometry.dispose();
     this.mat.map?.dispose();

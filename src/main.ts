@@ -6,6 +6,7 @@ import type { Phase, RunStats, ServerMsg } from '../shared/protocol.ts';
 import { applyAnomaly, type People } from './anomalies.ts';
 import { Sound } from './audio.ts';
 import { Avatars } from './avatars.ts';
+import { SelfBody } from './self.ts';
 import { Character, type Look } from './character.ts';
 import { Preview, corkTexture } from './lobby.ts';
 import { Net } from './net.ts';
@@ -104,7 +105,7 @@ function applyQuality() {
   SMOG_SPACE.linear = quality === 'high';
   resize();
   if (world) {
-    applyEnv(renderer, scene, world, quality === 'high', [avatars.root]);
+    applyEnv(renderer, scene, world, quality === 'high', [avatars.root, ...(ownBody ? [ownBody.root] : [])]);
     world.setQuality(quality === 'high');
   }
   ui.quality.textContent = `Графика: ${quality === 'high' ? 'высокая' : 'низкая'} (G)`;
@@ -143,6 +144,7 @@ const avatars = new Avatars();
 walker.onStep = (run) => sound?.step(null, run);
 avatars.onStep = (x, z, run) => sound?.step({ x, y: 0.05, z }, run);
 scene.add(avatars.root);
+let ownBody: SelfBody | null = null;
 
 // --- session state ---
 let net: Net | null = null;
@@ -453,6 +455,13 @@ function handle(msg: ServerMsg) {
       myId = msg.id;
       myColorValue = msg.color;
       myFlat = msg.flat;
+      // our own body, now that the flat on its card is known
+      if (ownBody) {
+        scene.remove(ownBody.root);
+        ownBody.dispose();
+      }
+      ownBody = new SelfBody({ name: ui.name.value.trim() || 'вы', color: myColor(), mask: myMask, outfit: myOutfit, flat: myFlat });
+      scene.add(ownBody.root);
       avatars.clear();
       voice?.clear();
       if (voice) voice.ice = msg.ice;
@@ -566,7 +575,7 @@ function enterCycle(msg: Extract<ServerMsg, { t: 'cycle' }>, mode: 'loop' | 'sta
   // compiled on first sight, an anomaly would stall the frame you first look at it.
   void renderer.compileAsync(world.group, camera, scene);
   if (world.bakeMs) bakeMs = world.bakeMs;
-  applyEnv(renderer, scene, world, quality === 'high', [avatars.root]);
+  applyEnv(renderer, scene, world, quality === 'high', [avatars.root, ...(ownBody ? [ownBody.root] : [])]);
   world.setQuality(quality === 'high');
   sound?.attach(world);
   const pose = mode === 'loop' ? loopPose(walker.x, walker.z, walker.yaw) : null;
@@ -699,6 +708,11 @@ renderer.setAnimationLoop((now) => {
   if (voice) avatars.setTalk(voice.levels());
   avatars.update(dt, t);
   if (world) avatars.light(world.probe);
+  if (ownBody) {
+    ownBody.root.visible = world !== null;
+    ownBody.update(dt, t, walker.x, walker.z, walker.yaw, walker.pitch);
+    if (world) ownBody.light(world.probe);
+  }
   if (samosbor) {
     samosbor.update(samosborHeld ? 0 : realDt);
     if (!warned && samosbor.t >= 0.5) {
