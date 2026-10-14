@@ -27,6 +27,10 @@ An exit counts only in `ZONE`, the middle leg of the Z. A player who walks on pa
 - **Full first-person body.** Looking down shows your legs, arms and torso: the same `Character` other players see, in your outfit and protective gear, walking in step with the footsteps. The camera sits in the head, so the head and the mask stay hidden from your own view (but not from the mirror).
 - **Your reflection in the hallway mirror.** The mirror shows you, not only the others; "Extra in the mirror" then stands next to a familiar figure. It costs one draw call more on high quality.
 
+### A longer samosbor
+
+`SAMOSBOR_MS` is 6 s: the spoken warning doesn't finish before the screen goes dark. Make it 15 s, the fog, puffs, flicker and veil spread over that time, and a better siren: fuller, more like a real civil-defence siren.
+
 ### Verdict log
 
 One server log line per verdict: floor, anomaly, private or not, correct or not, number of players. Shows which anomalies nobody notices and which are too obvious.
