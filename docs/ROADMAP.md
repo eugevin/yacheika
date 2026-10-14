@@ -37,7 +37,7 @@ One server log line per verdict: floor, anomaly, private or not, correct or not,
 - **Wallpaper seams** in the hallway and the corridor.
 - **Wallpaper over doorways.** Wallpaper must not run onto the doorway reveals or onto the doors themselves.
 - **Thresholds.** Under a doorway the floor of one room meets the other's in a bare line: a threshold strip covers the joint.
-- **Proper windows.** All three windows built to the same quality as the hallway one.
+- **Real mirrors.** The small mirror over the washbasin and the bedroom dresser's mirror reflect like the hall one.
 - **Clock hand.** The clock is missing a hand.
 - **Drip and clock sound position.** When the player turns their head quickly, the sound's position seems to update only when the next tick or drop plays; it has to follow the listener continuously, like the other sources.
 
