@@ -402,8 +402,8 @@ export class Sound {
   // --- the cell's sources ---
 
   /** One ambient source: a panner with a hard range, a switch, and whatever the source plays into it. */
-  private placed(p: V3, range: number, send: number, bus: AudioNode, on: number): SourceVoice {
-    const panner = this.panner('linear', 0.7, range);
+  private placed(p: V3, range: number, send: number, bus: AudioNode, on: number, panning: PanningModelType = 'HRTF'): SourceVoice {
+    const panner = this.panner('linear', 0.7, range, panning);
     place(panner, p);
     panner.connect(bus);
     // the reverb is fed after the distance, so a source out of range is silent there too
@@ -417,7 +417,10 @@ export class Sound {
   }
 
   private ambientVoice(a: Ambient): AmbientVoice {
-    const v: AmbientVoice = { a, ...this.placed(a, a.range, SEND[a.kind], this.cell, a.on ? 1 : 0) };
+    // Chromium's HRTF panner idles through silence and then glides from the stale direction, so a
+    // click after a head turn comes from where the source used to be: lone clicks pan by equal power
+    const clicks = a.kind === 'drip' || a.kind === 'clock' || a.kind === 'meter';
+    const v: AmbientVoice = { a, ...this.placed(a, a.range, SEND[a.kind], this.cell, a.on ? 1 : 0, clicks ? 'equalpower' : 'HRTF') };
     const every = (period: number, at: number[], play: Pattern['play'], origin = this.now) => v.patterns.push({ origin, period, at, play, until: this.now });
     const ctx = this.ctx;
     const out = v.on;
