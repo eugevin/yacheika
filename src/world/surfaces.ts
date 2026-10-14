@@ -328,8 +328,9 @@ export const surfaces = {
       fill(g, l === 'c' ? '#c9b98f' : l === 'h' ? grey(128) : rough(0.85), s);
       const n = 8;
       const t = s / n;
-      for (let i = 0; i < n; i++)
-        for (let j = 0; j < n; j++) {
+      // one row and column past the edge: the other halves of the rhombi cut at x = 0 and y = 0
+      for (let i = 0; i <= n; i++)
+        for (let j = 0; j <= n; j++) {
           const x = (i + (j % 2) * 0.5) * t;
           const y = j * t;
           g.fillStyle = l === 'c' ? 'rgba(120,90,50,0.45)' : l === 'h' ? grey(160) : rough(0.8);
