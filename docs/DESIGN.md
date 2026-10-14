@@ -183,7 +183,7 @@ All sound is synthesised with Web Audio. The normal cell always sounds the same:
 | "ZIL" fridge | kitchen | hum with periodic compressor rattle |
 | Wired radio | kitchen | a waltz, always the same loop |
 | Dripping tap | bathroom | sparse drops |
-| Pendulum clock | living room | ticking, in time with the pendulum |
+| Pendulum clock | living room | ticking, in time with the pendulum and the second hand |
 | Electricity meter | hallway | sparse clicks |
 | Lift | behind the landing wall | distant hum |
 | Footsteps | everywhere | by surface: muffled on rugs, clicking on tile, creaking parquet |
@@ -260,7 +260,7 @@ Any anomaly can be private (section 1). Anomalies that depend on the number of p
 | Chandelier swinging | 2 | The chandelier slowly swings |
 | Armchair to the wall | 3 | One armchair faces the wall |
 | Portrait watching | 3 | The portrait's eyes follow the player |
-| Clock stopped | 3 | The pendulum is still, no ticking |
+| Clock stopped | 3 | The pendulum and the second hand are still, no ticking |
 
 ### Bedroom and loggia
 

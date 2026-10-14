@@ -135,6 +135,12 @@ export function furnishLiving(root: THREE.Object3D, updaters: Updater[]): Living
     hand.position.set(0, 0.6, 0.124);
     hand.rotation.z = -a;
   }
+  // the second hand, red with a short tail, in front of the other two
+  const seconds = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.115, 0.002).translate(0, 0.0325, 0), k.paint(0x8a1f18, 0.5));
+  seconds.position.set(0, 0.6, 0.1275);
+  seconds.rotation.z = -1.2;
+  cg.add(seconds);
+  keep(seconds);
   const pendulum = new THREE.Group();
   pendulum.position.set(0, 0.48, 0.09);
   cg.add(pendulum);
@@ -144,7 +150,10 @@ export function furnishLiving(root: THREE.Object3D, updaters: Updater[]): Living
   keep(pendulum);
   const clock = { running: true };
   updaters.push((t) => {
-    if (clock.running) pendulum.rotation.z = Math.sin(t * Math.PI) * 0.12;
+    if (!clock.running) return;
+    pendulum.rotation.z = Math.sin(t * Math.PI) * 0.12;
+    // a step on every tick, at the ends of the swing (audio.ts ticks at t = n + 0.5)
+    seconds.rotation.z = -1.2 - Math.floor(t + 0.5) * (Math.PI / 30);
   });
 
   // portrait on the north wall, west of the door
