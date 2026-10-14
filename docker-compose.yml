@@ -27,7 +27,8 @@ services:
 
   # Host networking: TURN hands out relay ports from a range, which Docker's port mapping handles badly.
   coturn:
-    image: coturn/coturn:4
+    # Pinned: coturn drops flags between minor releases, and an unknown flag makes it exit at once.
+    image: coturn/coturn:4.18.0
     restart: unless-stopped
     network_mode: host
     command:
@@ -42,7 +43,6 @@ services:
       - --static-auth-secret=${TURN_SECRET}
       - --fingerprint
       - --no-tls
-      - --no-dtls
       - --no-cli
       - --no-multicast-peers
       # relay only to the internet: never let a TURN client reach the VPS itself or its private networks

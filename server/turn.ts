@@ -19,6 +19,8 @@ export function iceServers(label: string): RTCIceServer[] {
   const username = `${Math.floor(Date.now() / 1000) + TTL_S}:${label}`;
   const credential = createHmac('sha1', SECRET).update(username).digest('base64');
   return [
+    // the public one too: if coturn is down, players behind ordinary NATs still connect directly
+    PUBLIC_STUN,
     { urls: `stun:${HOST}:3478` },
     { urls: [`turn:${HOST}:3478?transport=udp`, `turn:${HOST}:3478?transport=tcp`], username, credential },
   ];
