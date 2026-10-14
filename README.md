@@ -38,3 +38,7 @@ To invite players, copy the link from the Esc menu: it contains the room code.
 | G | graphics quality |
 | F3 | frame rate, draw calls, bake time |
 | Esc | menu: players, invite link, start, settings (mouse sensitivity, sound and voice volume) |
+
+## License
+
+MIT, see [LICENSE](LICENSE).
