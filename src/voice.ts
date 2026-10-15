@@ -1,8 +1,54 @@
 import type * as THREE from 'three';
 import type { RtcSignal } from '../shared/protocol.ts';
 
+/** How much of each teammate's voice is kept on this machine, seconds (the voice mimic). */
+const KEEP_S = 8;
+/** A phrase: speech between pauses at least this long, between these lengths, seconds. */
+const PAUSE_S = 0.45;
+const PHRASE_MIN = 0.6;
+const PHRASE_MAX = 4.5;
+/** Voice level (levels()) above which someone counts as talking. */
+const TALKING = 0.08;
+/** Phrases kept per teammate, the newest. */
+const PHRASES = 4;
+
+/**
+ * The ring buffer: the last KEEP_S seconds of one voice, and on request the last n samples of it.
+ * An AudioWorklet from a string: no file to serve.
+ */
+const RING = `
+class Ring extends AudioWorkletProcessor {
+  constructor(o) {
+    super();
+    this.buf = new Float32Array(o.processorOptions.length);
+    this.at = 0;
+    this.port.onmessage = (e) => {
+      const n = Math.min(e.data, this.buf.length);
+      const out = new Float32Array(n);
+      for (let i = 0; i < n; i++) out[i] = this.buf[(this.at - n + i + this.buf.length) % this.buf.length];
+      this.port.postMessage(out, [out.buffer]);
+    };
+  }
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (ch) for (let i = 0; i < ch.length; i++) {
+      this.buf[this.at] = ch[i];
+      this.at = (this.at + 1) % this.buf.length;
+    }
+    return true;
+  }
+}
+registerProcessor('yacheika-ring', Ring);
+`;
+
 interface Peer {
   pc: RTCPeerConnection;
+  /** The last seconds of their voice (voice mimic), never sent anywhere. */
+  ring?: AudioWorkletNode;
+  /** Their phrases cut from it, newest last. */
+  phrases: AudioBuffer[];
+  /** When they started talking (context time), and when they last were, while a phrase goes on. */
+  talk: { from: number; loud: number } | null;
   panner?: PannerNode;
   /** The voice as it is, and through a gas mask (muffle): one of the two is open. */
   dry?: GainNode;
@@ -33,6 +79,10 @@ export class Voice {
   private readonly signal: (to: number, data: RtcSignal) => void;
   /** Voices come through as if from behind a gas mask, while a samosbor lasts. */
   private muffled = false;
+  /** The ring buffer's worklet, loaded once; null where AudioWorklet isn't available. */
+  private ringReady: Promise<boolean> | null = null;
+  /** Called once we hold a first phrase of a teammate: the server may then roll the voice mimic for us. */
+  onHeard: ((id: number) => void) | null = null;
 
   constructor(ctx: AudioContext, signal: (to: number, data: RtcSignal) => void) {
     this.ctx = ctx;
@@ -108,6 +158,8 @@ export class Voice {
     peer.pc.close();
     peer.panner?.disconnect();
     peer.meter?.disconnect();
+    peer.ring?.disconnect();
+    peer.ring?.port.close();
     for (const o of peer.lfos ?? []) o.stop();
     this.peers.delete(id);
   }
@@ -128,24 +180,76 @@ export class Voice {
     }
   }
 
-  /** How loudly each peer is talking right now, 0..1. Noise-suppressed silence reads as 0. */
+  /**
+   * How loudly each peer is talking right now, 0..1. Noise-suppressed silence reads as 0. Called
+   * every frame, it also cuts what they say into phrases (the voice mimic).
+   */
   levels() {
     const out = new Map<number, number>();
     const buf = new Float32Array(512);
+    const now = this.ctx.currentTime;
     for (const [id, peer] of this.peers) {
       if (!peer.meter) continue;
       peer.meter.getFloatTimeDomainData(buf);
       let sum = 0;
       for (const v of buf) sum += v * v;
-      out.set(id, Math.min(1, Math.max(0, (Math.sqrt(sum / buf.length) - 0.01) * 12)));
+      const level = Math.min(1, Math.max(0, (Math.sqrt(sum / buf.length) - 0.01) * 12));
+      out.set(id, level);
+      if (level > TALKING) {
+        peer.talk ??= { from: now, loud: now };
+        peer.talk.loud = now;
+      } else if (peer.talk && now - peer.talk.loud > PAUSE_S) {
+        const len = peer.talk.loud - peer.talk.from;
+        peer.talk = null;
+        if (len >= PHRASE_MIN && len <= PHRASE_MAX) this.keep(id, peer, len + PAUSE_S + 0.25);
+      }
     }
     return out;
+  }
+
+  /**
+   * One of the phrases our teammates said, as heard on this machine, or null: the voice mimic plays
+   * it back from where nobody stands. `r`: the anomaly's random.
+   */
+  phrase(r: () => number) {
+    const all = [...this.peers].flatMap(([from, p]) => p.phrases.map((buffer) => ({ from, buffer })));
+    return all.length ? all[Math.floor(r() * all.length)] : null;
+  }
+
+  /** Takes the last `secs` of a peer's voice out of its ring buffer as a phrase, levelled. */
+  private keep(id: number, peer: Peer, secs: number) {
+    const ring = peer.ring;
+    if (!ring) return;
+    ring.port.onmessage = (e: MessageEvent<Float32Array>) => {
+      const data = e.data;
+      let peak = 0;
+      for (const v of data) peak = Math.max(peak, Math.abs(v));
+      if (peak < 1e-3 || !this.peers.has(id)) return;
+      const b = this.ctx.createBuffer(1, data.length, this.ctx.sampleRate);
+      const ch = b.getChannelData(0);
+      for (let i = 0; i < data.length; i++) ch[i] = (data[i] / peak) * 0.6;
+      const first = peer.phrases.length === 0;
+      peer.phrases = [...peer.phrases, b].slice(-PHRASES);
+      if (first) this.onHeard?.(id);
+    };
+    ring.port.postMessage(Math.floor(secs * this.ctx.sampleRate));
+  }
+
+  /** Loads the ring buffer's worklet, once. */
+  private ringModule() {
+    this.ringReady ??= this.ctx.audioWorklet
+      ? this.ctx.audioWorklet
+          .addModule(URL.createObjectURL(new Blob([RING], { type: 'application/javascript' })))
+          .then(() => true)
+          .catch(() => false)
+      : Promise.resolve(false);
+    return this.ringReady;
   }
 
   private peer(id: number, initiator: boolean): Peer {
     this.remove(id);
     const pc = new RTCPeerConnection({ iceServers: this.ice });
-    const peer: Peer = { pc, pending: [] };
+    const peer: Peer = { pc, pending: [], phrases: [], talk: null };
     this.peers.set(id, peer);
     if (this.stream) for (const t of this.stream.getTracks()) pc.addTrack(t, this.stream);
     // without a mic the offer still needs an audio section, or we'd never hear the other side
@@ -192,6 +296,14 @@ export class Voice {
       source.connect(meter);
       peer.panner = panner;
       peer.meter = meter;
+      // the last seconds of their voice, kept here and nowhere else
+      void this.ringModule().then((ok) => {
+        if (!ok || this.peers.get(id) !== peer) return;
+        const ring = new AudioWorkletNode(this.ctx, 'yacheika-ring', { numberOfOutputs: 1, processorOptions: { length: Math.ceil(KEEP_S * this.ctx.sampleRate) } });
+        // pulled through a silent gain, or the browser wouldn't run it
+        source.connect(ring).connect(new GainNode(this.ctx, { gain: 0 })).connect(this.ctx.destination);
+        peer.ring = ring;
+      });
     };
     return peer;
   }

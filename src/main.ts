@@ -267,6 +267,7 @@ async function join() {
   }
   sound.unlock();
   voice ??= new Voice(sound.ctx, (to, data) => net?.send({ t: 'rtc', to, data }));
+  voice.onHeard = (id) => net?.send({ t: 'heard', id });
   applySettings();
   if (ui.mic.checked && !voice.stream) await voice.enableMic();
   const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
@@ -599,7 +600,11 @@ function enterCycle(msg: Extract<ServerMsg, { t: 'cycle' }>, mode: 'loop' | 'sta
   world = buildWorld(msg.cycle, 1 + avatars.all.length, msg.phase === 'won');
   walker.stairs = world.won;
   run = msg.run ?? null;
-  const people: People = { self: { id: myId, name: ui.name.value.trim() || 'вы', color: myColor(), mask: myMask, outfit: myOutfit, flat: myFlat }, others: avatars.all };
+  const people: People = {
+    self: { id: myId, name: ui.name.value.trim() || 'вы', color: myColor(), mask: myMask, outfit: myOutfit, flat: myFlat },
+    others: avatars.all,
+    phrase: (r) => voice?.phrase(r) ?? null,
+  };
   const changed = msg.anomalies.flatMap((a) => applyAnomaly(world!, a.id, a.seed, msg.cycle, people, a.morok === true));
   world.settle(changed);
   scene.add(world.group);

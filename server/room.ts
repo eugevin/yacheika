@@ -69,6 +69,8 @@ export interface Player extends PlayerInfo {
   entered: boolean;
   any: Bucket;
   loud: Bucket;
+  /** Teammates this player's machine holds a phrase of (voice mimic): who the cell can speak as. */
+  heard: Set<number>;
 }
 
 interface Anomaly {
@@ -124,7 +126,7 @@ export class Room {
     const others = [...this.players.values()];
     const color = COLORS.find((c) => !others.some((p) => p.color === c)) ?? rand(COLORS);
     const flat = FLATS.find((f) => !others.some((p) => p.flat === f)) ?? rand(FLATS);
-    const p: Player = { id: this.nextId++, name, color, mask, outfit, flat, send, x: 0, z: 0, yaw: 0, pitch: 0, posCycle: -1, entered: false, any: anyMsg(), loud: loudMsg() };
+    const p: Player = { id: this.nextId++, name, color, mask, outfit, flat, send, x: 0, z: 0, yaw: 0, pitch: 0, posCycle: -1, entered: false, any: anyMsg(), loud: loudMsg(), heard: new Set() };
     const ice = iceServers(`${this.code}-${p.id}`);
     send({ t: 'hello', id: p.id, code: this.code, color, flat, players: others.map(info), ice });
     this.broadcast({ t: 'joined', player: info(p) });
@@ -135,6 +137,7 @@ export class Room {
 
   leave(p: Player) {
     this.players.delete(p.id);
+    for (const other of this.players.values()) other.heard.delete(p.id);
     this.broadcast({ t: 'left', id: p.id });
     // A private anomaly loses its only witness; the cycle stays as is, the group just can't know.
   }
@@ -170,6 +173,9 @@ export class Room {
         if (data && msg.to !== p.id) this.players.get(msg.to)?.send({ t: 'rtc', from: p.id, data });
         break;
       }
+      case 'heard':
+        if (Number.isInteger(msg.id) && msg.id !== p.id && this.players.has(msg.id)) p.heard.add(msg.id);
+        break;
     }
   }
 
@@ -256,13 +262,13 @@ export class Room {
     if (Math.random() >= ANOMALY_CHANCE) return null;
     const tier = maxDifficulty(this.cycle);
     const ids = [...this.players.keys()];
-    const pool = ANOMALIES.filter((a) => a.tier <= tier && (a.players ?? 1) <= ids.length && !this.recent.includes(a.id));
+    const pool = ANOMALIES.filter((a) => a.tier <= tier && (a.players ?? 1) <= ids.length && !this.recent.includes(a.id) && this.witnesses(a).length);
     if (pool.length === 0) return null;
     const a = rand(pool);
     this.recent = [...this.recent, a.id].slice(-RECENT_LIMIT);
     // an alone anomaly goes to everyone: each screen waits for its own player to wander off
     const secret = a.only === 'always' || (a.only !== 'never' && !a.alone && Math.random() < privateChance(this.cycle, ids.length));
-    const only = secret ? rand(ids) : null;
+    const only = secret ? rand(this.witnesses(a)) : null;
     return { id: a.id, name: a.name, seed: Math.floor(Math.random() * 2 ** 31), only };
   }
 
@@ -271,11 +277,17 @@ export class Room {
     const ids = [...this.players.keys()];
     if (Math.random() >= morokChance(this.cycle, ids.length)) return null;
     const tier = maxDifficulty(this.cycle);
-    const pool = ANOMALIES.filter((a) => a.morok && a.tier <= tier && (a.players ?? 1) <= ids.length && !this.recent.includes(a.id));
+    const pool = ANOMALIES.filter((a) => a.morok && a.tier <= tier && (a.players ?? 1) <= ids.length && !this.recent.includes(a.id) && this.witnesses(a).length);
     if (pool.length === 0) return null;
     const a = rand(pool);
     this.recent = [...this.recent, a.id].slice(-RECENT_LIMIT);
-    return { id: a.id, name: a.name, seed: Math.floor(Math.random() * 2 ** 31), only: rand(ids) };
+    return { id: a.id, name: a.name, seed: Math.floor(Math.random() * 2 ** 31), only: rand(this.witnesses(a)) };
+  }
+
+  /** Who could be shown it alone: anyone, or for the voice mimic whoever holds a teammate's phrase. */
+  private witnesses(a: (typeof ANOMALIES)[number]) {
+    const ids = [...this.players.values()].filter((p) => !a.mimic || [...p.heard].some((id) => this.players.has(id))).map((p) => p.id);
+    return ids;
   }
 
   /**

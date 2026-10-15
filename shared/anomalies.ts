@@ -25,6 +25,11 @@ export interface AnomalyInfo {
    * and each screen holds it back until its own player is alone, then plays it once.
    */
   alone?: true;
+  /**
+   * Plays back a teammate's own voice, recorded on the witness's machine (the voice mimic): only for
+   * a witness who has heard someone (the 'heard' message). Always private.
+   */
+  mimic?: true;
 }
 
 export const ANOMALIES: AnomalyInfo[] = [
@@ -99,4 +104,6 @@ export const ANOMALIES: AnomalyInfo[] = [
   { id: 'alone_door', name: 'Дверь закрылась за спиной', tier: 2, alone: true },
   { id: 'alone_call', name: 'Зовут из соседней комнаты', tier: 3, alone: true, morok: 'sound' },
   { id: 'alone_steps', name: 'Шаги, когда ты один', tier: 2, alone: true, morok: 'sound' },
+  // the voice mimic: a teammate's words from where nobody is
+  { id: 'voice_mimic', name: 'Чужой голос знакомый', tier: 3, players: 2, only: 'always', mimic: true, morok: 'sound' },
 ];

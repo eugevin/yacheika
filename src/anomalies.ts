@@ -1031,6 +1031,23 @@ const APPLY: Record<string, Apply> = {
     w.silent = true;
   },
 
+  // --- the voice mimic ---
+
+  voice_mimic: (w, r, _c, people) => {
+    // A teammate's own words, as this machine heard them, said again from where nobody is: behind
+    // a neighbour's door (43-48: 41 and 42 would reach the vestibule), in the shut pantry, in the
+    // bathroom or the toilet. Without a recording, a murmur of someone's name.
+    const said = people.phrase?.(r) ?? null;
+    const doors = Object.entries(w.props.common.neighbourDoors).filter(([n]) => Number(n) >= 43);
+    const room = (id: RoomId) => {
+      const rect = ROOM_BY_ID[id].rect;
+      return V((rect.x0 + rect.x1) / 2, 1.5, (rect.z0 + rect.z1) / 2);
+    };
+    const spots = [() => worldAt(pick(doors, r)[1].parent!, 0, 1.5, -1.0), () => room('pantry'), () => room('bath'), () => room('wc')];
+    const p = pick(spots, r)();
+    w.emitters.push({ kind: 'call', x: p.x, y: p.y, z: p.z, range: 8, every: 12, at: [3], name: someone(people, r).name, phrase: said?.buffer });
+  },
+
   // --- alone: only to a player with nobody near ---
 
   alone_breath: (w) => {

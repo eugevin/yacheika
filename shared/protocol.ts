@@ -32,7 +32,9 @@ export type ClientMsg =
   | { t: 'pos'; c: number; x: number; z: number; yaw: number; pitch: number }
   | { t: 'chat'; text: string }
   | { t: 'mark'; x: number; y: number; z: number }
-  | { t: 'rtc'; to: number; data: RtcSignal };
+  | { t: 'rtc'; to: number; data: RtcSignal }
+  // this machine now holds a phrase of teammate `id` (voice mimic); the recording itself never leaves it
+  | { t: 'heard'; id: number };
 
 export type ServerMsg =
   | { t: 'error'; text: string }
