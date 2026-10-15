@@ -266,7 +266,8 @@ export class Sound {
       if (moved) this.muffle(v.wall, t);
       if (v.e.once && !v.done && running) {
         v.done = true;
-        v.play?.(t, 0);
+        // a moment ahead: the voice was only just wired, and what starts at once is lost
+        v.play?.(t + 0.06, 0);
       }
       for (const p of v.patterns) this.schedule(p, now, running);
       const e = v.e;
@@ -883,6 +884,37 @@ export class Sound {
           this.creak(t + 0.35, 0.08, 0.9, out);
           this.thump(t + 0.9, 95, 0.1, 0.2, out);
           this.burst(t + 0.9, 0.04, 0.12, 1300, 3, 'bandpass', out, 0.002, null);
+        };
+        break;
+      case 'slam':
+        v.play = (t) => {
+          // a door slammed hard: the blow, the frame rattling, the room ringing with it (a sting: under 0.15 peak)
+          this.thump(t, 62, 0.22, 0.8, out);
+          this.burst(t, 0.12, 0.5, 420, 0.8, 'lowpass', out, 0.002);
+          this.burst(t + 0.015, 0.06, 0.18, 1200, 2, 'bandpass', out, 0.002);
+          this.thump(t + 0.09, 140, 0.05, 0.13, out);
+          this.thump(t + 0.16, 130, 0.04, 0.08, out);
+        };
+        break;
+      case 'ring':
+        v.play = (t) => {
+          // one ring of the bell, cut short: a sting (under 0.15 peak)
+          const g = envelope(ctx, t, 0.004, 0.25, 0.075, 0.45);
+          const trem = this.gain(0.5);
+          const lfo = ctx.createOscillator();
+          lfo.type = 'square';
+          lfo.frequency.value = 18;
+          lfo.connect(this.gain(0.5)).connect(trem.gain);
+          for (const f of [640, 790]) {
+            const osc = ctx.createOscillator();
+            osc.frequency.value = f;
+            osc.connect(trem);
+            osc.start(t);
+            osc.stop(t + 0.9);
+          }
+          lfo.start(t);
+          lfo.stop(t + 0.9);
+          trem.connect(this.filter('lowpass', 1800, 0.7)).connect(this.filter('lowpass', 2200, 0.7)).connect(g).connect(out);
         };
         break;
       case 'step':

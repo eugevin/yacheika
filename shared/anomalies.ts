@@ -104,6 +104,10 @@ export const ANOMALIES: AnomalyInfo[] = [
   { id: 'alone_door', name: 'Дверь закрылась за спиной', tier: 2, alone: true },
   { id: 'alone_call', name: 'Зовут из соседней комнаты', tier: 3, alone: true, morok: 'sound' },
   { id: 'alone_steps', name: 'Шаги, когда ты один', tier: 2, alone: true, morok: 'sound' },
+  // stings: the few sharp sounds the game allows
+  { id: 'sting_slam', name: 'Дверь хлопнула', tier: 1 },
+  { id: 'sting_ring', name: 'Телефон звякнул', tier: 1, morok: 'sound' },
+  { id: 'sting_knock', name: 'Стук у самого уха', tier: 2, morok: 'sound' },
   // the voice mimic: a teammate's words from where nobody is
   { id: 'voice_mimic', name: 'Чужой голос знакомый', tier: 3, players: 2, only: 'always', mimic: true, morok: 'sound' },
 ];

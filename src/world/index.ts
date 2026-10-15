@@ -80,7 +80,9 @@ export interface Emitter {
     | 'breath'
     | 'shut'
     | 'step'
-    | 'call';
+    | 'call'
+    | 'slam'
+    | 'ring';
   x: number;
   y: number;
   z: number;

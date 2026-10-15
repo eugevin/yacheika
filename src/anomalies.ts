@@ -148,6 +148,32 @@ function cue(w: World, e: Omit<Parameters<World['emitters']['push']>[0], 'once' 
   return true;
 }
 
+const doorCentre = (d: World['doors'][number]['d']) => {
+  const r = doorRect(d);
+  return { x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2 };
+};
+
+/**
+ * Swings a door shut over `seconds` (smoothly, or picking up speed like a slam) and keeps it so
+ * until somebody comes up to it: then it gives, creaking, and stands open again.
+ */
+function shutDoor(w: World, door: World['doors'][number], seconds: number, slam: boolean) {
+  const c = doorCentre(door.d);
+  const me = V();
+  let swing = 0;
+  let open = false;
+  w.updaters.push((_t, dt, cam) => {
+    const near = [cam.getWorldPosition(me), ...w.teammates].some((p) => Math.hypot(p.x - c.x, p.z - c.z) < 0.9);
+    if (near && !open && swing > 0.9) {
+      open = true;
+      cue(w, { kind: 'creak', x: c.x, y: 1.2, z: c.z, range: 6 });
+    }
+    swing = THREE.MathUtils.clamp(swing + (open ? -dt / 0.5 : dt / seconds), 0, 1);
+    const k = open || !slam ? THREE.MathUtils.smoothstep(swing, 0, 1) : swing * swing;
+    swingLeaf(door.d, door.leaf, k * 0.97);
+  });
+}
+
 /** How each anomaly from shared/anomalies.ts changes a freshly built cell. */
 const APPLY: Record<string, Apply> = {
   // --- landing and floor corridor ---
@@ -1031,6 +1057,67 @@ const APPLY: Record<string, Apply> = {
     w.silent = true;
   },
 
+  // --- stings: the few sharp sounds the game allows, never in a normal cell ---
+
+  sting_slam: (w) => {
+    // a door you have just looked at slams the moment you turn your back on it
+    const doors = w.doors.filter(({ d }) => d.kind !== 'hermo');
+    let watched: (typeof doors)[number] | null = null;
+    let looked = 0;
+    let away = 0;
+    let done = false;
+    w.updaters.push((_t, dt, cam) => {
+      if (done) return;
+      const eye = eyeOf(cam);
+      const seen = doors.find(({ d }) => {
+        const c = doorCentre(d);
+        const far = Math.hypot(c.x - eye.x, c.z - eye.z);
+        return far > 1.8 && far < 6 && sees(w, eye, c.x, 1.2, c.z);
+      });
+      if (seen) {
+        looked = seen === watched ? looked + dt : dt;
+        watched = seen;
+        away = 0;
+        return;
+      }
+      if (!watched || looked < 1) return;
+      away += dt;
+      const c = doorCentre(watched.d);
+      if (away < 0.4 || Math.hypot(c.x - eye.x, c.z - eye.z) < 1.8) return;
+      if (!cue(w, { kind: 'slam', x: c.x, y: 1.2, z: c.z, range: 7 })) return;
+      shutDoor(w, watched, 0.18, true);
+      done = true;
+    });
+    return doors.map(({ leaf }) => leaf);
+  },
+  sting_ring: (w) => {
+    // the hall phone rings once, sharp, as you pass right by it
+    const p = worldAt(w.props.hall.receiver.parent!);
+    w.emitters.push({ kind: 'ring', x: p.x, y: p.y, z: p.z, range: 7, near: 1.4 });
+  },
+  sting_knock: (w) => {
+    // three knocks on the other side of the wall, right at your ear, when you stand by one
+    let done = false;
+    const eye = V();
+    w.updaters.push((_t, _dt, cam) => {
+      if (done) return;
+      cam.getWorldPosition(eye);
+      const room = roomAt(eye.x, eye.z);
+      if (!room) return;
+      const r = room.rect;
+      // the nearest wall, if within reach of a hand; the knocks ring in the wall itself, on our side of it
+      const sides = [
+        { d: eye.x - r.x0, x: r.x0 + 0.02, z: eye.z },
+        { d: r.x1 - eye.x, x: r.x1 - 0.02, z: eye.z },
+        { d: eye.z - r.z0, x: eye.x, z: r.z0 + 0.02 },
+        { d: r.z1 - eye.z, x: eye.x, z: r.z1 - 0.02 },
+      ].sort((a, b) => a.d - b.d);
+      const wall = sides[0];
+      if (wall.d > 0.55) return;
+      done = cue(w, { kind: 'knock', x: wall.x, y: eye.y, z: wall.z, range: 4, gain: 0.5 });
+    });
+  },
+
   // --- the voice mimic ---
 
   voice_mimic: (w, r, _c, people) => {
@@ -1063,23 +1150,17 @@ const APPLY: Record<string, Apply> = {
     const doors = w.doors.filter(({ d }) => d.kind !== 'hermo');
     let here: RoomId | null = null;
     let last: RoomId | null = null;
-    let shut: (typeof doors)[number] | null = null;
-    let swing = 0;
-    let open = false;
-    const me = V();
     whenAlone(
       w,
       (eye, cam) => {
         if (!here || !last) return false;
         const door = doors.find(({ d }) => (d.a === here && d.b === last) || (d.a === last && d.b === here));
         if (!door) return false;
-        const r = doorRect(door.d);
-        const cx = (r.x0 + r.x1) / 2;
-        const cz = (r.z0 + r.z1) / 2;
+        const c = doorCentre(door.d);
         // behind us, a few steps off, out of sight
-        if (Math.hypot(cx - eye.x, cz - eye.z) < 1.6 || sees(w, eyeOf(cam), cx, 1.2, cz)) return false;
-        if (!cue(w, { kind: 'shut', x: cx, y: 1.2, z: cz, range: 9 })) return false;
-        shut = door;
+        if (Math.hypot(c.x - eye.x, c.z - eye.z) < 1.6 || sees(w, eyeOf(cam), c.x, 1.2, c.z)) return false;
+        if (!cue(w, { kind: 'shut', x: c.x, y: 1.2, z: c.z, range: 7 })) return false;
+        shutDoor(w, door, 1.1, false);
         return true;
       },
       (eye) => {
@@ -1087,18 +1168,6 @@ const APPLY: Record<string, Apply> = {
         if (room && room !== here) [last, here] = [here, room];
       },
     );
-    w.updaters.push((_t, dt, cam) => {
-      if (!shut) return;
-      const r = doorRect(shut.d);
-      const [cx, cz] = [(r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2];
-      const near = [cam.getWorldPosition(me), ...w.teammates].some((p) => Math.hypot(p.x - cx, p.z - cz) < 0.9);
-      if (near && !open && swing > 0.9) {
-        open = true;
-        cue(w, { kind: 'creak', x: cx, y: 1.2, z: cz, range: 6 });
-      }
-      swing = THREE.MathUtils.clamp(swing + (open ? -dt / 0.5 : dt / 1.1), 0, 1);
-      swingLeaf(shut.d, shut.leaf, THREE.MathUtils.smoothstep(swing, 0, 1) * 0.97);
-    });
     return doors.map(({ leaf }) => leaf);
   },
   alone_call: (w, r, _c, people) => {
