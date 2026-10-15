@@ -42,6 +42,10 @@ export class Avatars {
   private gaze = new Set<number>();
   /** One more resident, this cycle only (AvatarOverrides.extra). */
   private stranger: Stranger | null = null;
+  /** The chaser, this cycle only (AvatarOverrides.chaser): walked by the server, smoothed here. */
+  private chaser: { char: Character; target: THREE.Vector3; yaw: number; seen: boolean; stride: number } | null = null;
+  /** Called when the chaser takes a step. */
+  onChaserStep: ((x: number, z: number) => void) | null = null;
   /** Called when another player takes a step, derived from how far their avatar moved. */
   onStep: ((x: number, z: number, run: boolean) => void) | null = null;
 
@@ -92,6 +96,19 @@ export class Avatars {
     }
   }
 
+  /** Where the server has the chaser now. */
+  setChaser(x: number, z: number, yaw: number) {
+    const c = this.chaser;
+    if (!c) return;
+    c.target.set(x, 0, z);
+    c.yaw = yaw;
+    if (!c.seen) {
+      c.char.root.position.copy(c.target);
+      c.char.root.rotation.y = yaw;
+      c.seen = c.char.root.visible = true;
+    }
+  }
+
   setTalk(levels: Map<number, number>) {
     for (const [id, a] of this.list) a.talk = levels.get(id) ?? 0;
   }
@@ -128,6 +145,18 @@ export class Avatars {
     }
     this.stranger = o.extra && new Stranger(o.extra, STEP_LEN, (x, z, run) => this.onStep?.(x, z, run));
     if (this.stranger) this.root.add(this.stranger.char.root);
+    if (this.chaser) {
+      this.root.remove(this.chaser.char.root);
+      this.chaser.char.dispose();
+      this.chaser = null;
+    }
+    if (o.chaser) {
+      // a liquidator's suit and gas mask, darker than anyone's: nobody's colour
+      const char = new Character({ name: '', color: '#2e2d2a', mask: 'gp5', outfit: 'l1', flat: 0 });
+      char.root.visible = false;
+      this.root.add(char.root);
+      this.chaser = { char, target: new THREE.Vector3(), yaw: 0, seen: false, stride: 0 };
+    }
     for (const [id, a] of this.list) {
       const look = o.look.get(id);
       if (a.char === a.own && !look) {
@@ -197,6 +226,8 @@ export class Avatars {
     for (const a of this.list.values()) if (a.char.root.visible) probe(a.char.root.position.x, a.char.root.position.z, a.char.probe);
     const s = this.stranger?.char;
     if (s) probe(s.root.position.x, s.root.position.z, s.probe);
+    const c = this.chaser?.char;
+    if (c?.root.visible) probe(c.root.position.x, c.root.position.z, c.probe);
   }
 
   /** `eye`: the camera, for heads that turn to it. */
@@ -226,6 +257,22 @@ export class Avatars {
         pitch = Math.atan2(eye.y - head, Math.hypot(eye.x - pos.x, eye.z - pos.z));
       }
       a.char.animate(dt, t, moved, pitch, a.talk);
+    }
+    const c = this.chaser;
+    if (c?.seen) {
+      const pos = c.char.root.position;
+      const [px, pz] = [pos.x, pos.z];
+      pos.lerp(c.target, k);
+      const moved = Math.hypot(pos.x - px, pos.z - pz);
+      let d = c.yaw - c.char.root.rotation.y;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      c.char.root.rotation.y += d * k;
+      if ((c.stride += moved) >= STEP_LEN * 1.1) {
+        c.stride = 0;
+        this.onChaserStep?.(pos.x, pos.z);
+      }
+      // it keeps its head down
+      c.char.animate(dt, t, moved, -0.25, 0);
     }
     if (this.stranger) {
       const people = [{ x: eye.x, z: eye.z }];

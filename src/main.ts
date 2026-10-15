@@ -150,6 +150,7 @@ for (const [id, s] of Object.entries(SETTINGS)) {
 const avatars = new Avatars();
 walker.onStep = (run) => sound?.step(null, run);
 avatars.onStep = (x, z, run) => sound?.step({ x, y: 0.05, z }, run);
+avatars.onChaserStep = (x, z) => sound?.chaserStep({ x, y: 0.05, z });
 scene.add(avatars.root);
 let ownBody: SelfBody | null = null;
 
@@ -538,6 +539,7 @@ function handle(msg: ServerMsg) {
       break;
     case 'pos':
       for (const [id, x, z, yaw, pitch, c, b] of msg.list) if (id !== myId && c === shownCycleId) avatars.setPos(id, x, z, yaw, pitch, b);
+      if (msg.chaser && msg.chaser[4] === shownCycleId) avatars.setChaser(msg.chaser[0], msg.chaser[1], msg.chaser[2]);
       break;
     case 'countdown': {
       someoneOut = true;

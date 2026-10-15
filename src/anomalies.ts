@@ -1118,6 +1118,13 @@ const APPLY: Record<string, Apply> = {
     });
   },
 
+  // --- the chaser ---
+
+  chaser: (w) => {
+    // the server walks it (server/chaser.ts); every screen draws it where the server says
+    w.avatars.chaser = true;
+  },
+
   // --- the voice mimic ---
 
   voice_mimic: (w, r, _c, people) => {

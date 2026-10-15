@@ -69,7 +69,8 @@ export type ServerMsg =
       dark?: true;
     }
   // c: cycle each position belongs to; positions from another cycle are in the other corridor
-  | { t: 'pos'; list: [id: number, x: number, z: number, yaw: number, pitch: number, c: number, b: number][] }
+  // chaser: the chaser of this cycle, if it has one (server/chaser.ts); moving 1 while it walks
+  | { t: 'pos'; list: [id: number, x: number, z: number, yaw: number, pitch: number, c: number, b: number][]; chaser?: [x: number, z: number, yaw: number, moving: number, c: number] }
   | { t: 'countdown'; endsIn: number; forward: number; back: number; inside: number }
   | { t: 'countdown_off' }
   | {

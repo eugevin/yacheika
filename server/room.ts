@@ -19,6 +19,7 @@ import {
   morokChance,
   privateChance,
 } from '../shared/rules.ts';
+import { Chaser } from './chaser.ts';
 import { iceServers } from './turn.ts';
 
 const COLORS = ['#e8c547', '#5fb3e8', '#e8705f', '#7be85f', '#c77be8', '#e8a35f'];
@@ -113,6 +114,8 @@ export class Room {
   private mistakes = 0;
   /** The samosbor going on is the big one. */
   private big = false;
+  /** The chaser of this cycle, if its anomaly is the chaser. */
+  private chaser: Chaser | null = null;
   /** This cycle is a blackout; the lamps were off when the last one ended. */
   private dark = false;
   private darkFrom = false;
@@ -189,17 +192,30 @@ export class Room {
   }
 
   tick(now = Date.now()) {
+    const dt = Math.min(0.1, Math.max(0, (now - this.clock) / 1000));
     this.clock = now;
-    if (++this.ticks % POS_EVERY === 0 && this.players.size > 1) {
+    const c = this.chaser;
+    if (++this.ticks % POS_EVERY === 0 && (this.players.size > 1 || c)) {
       const list: [number, number, number, number, number, number, number][] = [];
       for (const p of this.players.values())
         if (p.posCycle >= 0) list.push([p.id, round(p.x), round(p.z), round(p.yaw), round(p.pitch), p.posCycle, p.beam]);
-      this.broadcast({ t: 'pos', list });
+      const chaser: [number, number, number, number, number] | undefined = c ? [round(c.walk.x), round(c.walk.z), round(c.yaw), c.moving ? 1 : 0, this.cycleId] : undefined;
+      this.broadcast({ t: 'pos', list, ...(chaser ? { chaser } : {}) });
     }
 
     if (this.phase === 'samosbor' && now >= this.samosborEnd) this.newCycle(false);
     if (this.phase !== 'playing') return;
     this.startedAt ??= now;
+
+    if (c) {
+      const here = [...this.players.values()].filter((p) => p.posCycle === this.cycleId);
+      const caught = c.tick(dt, here);
+      if (caught) {
+        console.log(`verdict ${this.code} floor ${this.cycle}: chaser, caught ${caught.name}`);
+        this.mistake(now, { reason: 'caught', caught: caught.name });
+        return;
+      }
+    }
 
     const choices = new Map<number, Exit | null>();
     const counted = (p: Player) => p.posCycle === this.cycleId && p.entered;
@@ -265,6 +281,7 @@ export class Room {
     this.countdownEnd = null;
     this.settleEnd = null;
     this.anomaly = first ? null : this.roll();
+    this.chaser = this.anomaly?.id === 'chaser' ? new Chaser(this.anomaly.seed) : null;
     this.morok = first || this.anomaly ? null : this.rollMorok();
     for (const p of this.players.values()) p.entered = false;
     this.sendCycle();
@@ -275,7 +292,13 @@ export class Room {
     const tier = maxDifficulty(this.cycle);
     const ids = [...this.players.keys()];
     const pool = ANOMALIES.filter(
-      (a) => a.tier <= tier && (a.players ?? 1) <= ids.length && !this.recent.includes(a.id) && this.witnesses(a).length && !(a.light && this.dark),
+      (a) =>
+        a.tier <= tier &&
+        (a.players ?? 1) <= ids.length &&
+        (a.from ?? 0) <= this.cycle &&
+        !this.recent.includes(a.id) &&
+        this.witnesses(a).length &&
+        !(a.light && this.dark),
     );
     if (pool.length === 0) return null;
     const a = rand(pool);
@@ -291,7 +314,9 @@ export class Room {
     const ids = [...this.players.keys()];
     if (Math.random() >= morokChance(this.cycle, ids.length)) return null;
     const tier = maxDifficulty(this.cycle);
-    const pool = ANOMALIES.filter((a) => a.morok && a.tier <= tier && (a.players ?? 1) <= ids.length && !this.recent.includes(a.id) && this.witnesses(a).length);
+    const pool = ANOMALIES.filter(
+      (a) => a.morok && a.tier <= tier && (a.players ?? 1) <= ids.length && (a.from ?? 0) <= this.cycle && !this.recent.includes(a.id) && this.witnesses(a).length,
+    );
     if (pool.length === 0) return null;
     const a = rand(pool);
     this.recent = [...this.recent, a.id].slice(-RECENT_LIMIT);
@@ -345,6 +370,7 @@ export class Room {
     this.settleEnd = null;
     this.anomaly = null;
     this.morok = null;
+    this.chaser = null;
     this.sendCycle();
   }
 
@@ -395,6 +421,7 @@ export class Room {
     this.settleEnd = null;
     this.anomaly = null;
     this.morok = null;
+    this.chaser = null;
     this.sendCycle();
   }
 

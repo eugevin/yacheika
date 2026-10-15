@@ -130,6 +130,8 @@ export interface AvatarOverrides {
   look: Map<number, Look>;
   /** One more resident walking with the group (stranger.ts). */
   extra: Look | null;
+  /** The chaser comes this cycle: the server walks it, the avatars draw it. */
+  chaser: boolean;
 }
 
 export interface World {
@@ -387,7 +389,7 @@ export function buildWorld(cycle: number, players: number, won = false): World {
     silent: false,
     emitters: [],
     follower: false,
-    avatars: { gaze: new Set(), look: new Map(), extra: null },
+    avatars: { gaze: new Set(), look: new Map(), extra: null, chaser: false },
     teammates: [],
     updaters,
     bakeMs,

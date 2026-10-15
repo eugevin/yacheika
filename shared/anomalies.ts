@@ -32,6 +32,8 @@ export interface AnomalyInfo {
   mimic?: true;
   /** Made of the cell's own light: left out of blackout cycles, where the lamps are off anyway. */
   light?: true;
+  /** Not before this floor. */
+  from?: number;
 }
 
 export const ANOMALIES: AnomalyInfo[] = [
@@ -110,6 +112,8 @@ export const ANOMALIES: AnomalyInfo[] = [
   { id: 'sting_slam', name: 'Дверь хлопнула', tier: 1 },
   { id: 'sting_ring', name: 'Телефон звякнул', tier: 1, morok: 'sound' },
   { id: 'sting_knock', name: 'Стук у самого уха', tier: 2, morok: 'sound' },
+  // the chaser: comes for the group while nobody looks (server/chaser.ts); the name to be checked against the canon
+  { id: 'chaser', name: 'Преследователь', tier: 2, only: 'never', from: 5 },
   // the voice mimic: a teammate's words from where nobody is
   { id: 'voice_mimic', name: 'Чужой голос знакомый', tier: 3, players: 2, only: 'always', mimic: true, morok: 'sound' },
 ];

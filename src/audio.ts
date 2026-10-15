@@ -298,6 +298,28 @@ export class Sound {
     }
   }
 
+  /**
+   * One of the chaser's steps: heavy, a hard range like any anomaly sound, and never one that could
+   * reach an exit zone (it walks right up to the blast doors).
+   */
+  chaserStep(at: V3) {
+    const range = 6;
+    if (reachesZone(at.x, at.z, range)) return;
+    const t = this.ctx.currentTime;
+    const panner = this.panner('linear', 0.8, range);
+    place(panner, { x: at.x, y: 0.1, z: at.z });
+    const wall = this.wall(roomAt(at.x, at.z)?.id ?? null);
+    wall.gain.connect(panner).connect(this.master);
+    // the room's reverb after the distance, like the cell's own sources
+    const send = this.gain(0.4);
+    panner.connect(send).connect(this.room);
+    const out = this.gain(1);
+    out.connect(wall.filter);
+    this.footfall(t, RUN_GAIN * 1.2, out, footingAt(at.x, at.z), false, null);
+    // disconnected once it has rung out
+    setTimeout(() => [out, wall.filter, wall.gain, panner, send].forEach((n) => n.disconnect()), 1500);
+  }
+
   /** Short soft blip: someone placed a mark. */
   blip() {
     this.tone(520, 0.25, 0.05);
