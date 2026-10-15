@@ -6,20 +6,75 @@ Versions are 0.x while the game is changing a lot. Each one ends with a group pl
 
 ## 0.4 "Fear"
 
-Towards horror and real danger, keeping the core: the base cell is the same every time, any strange sound is an anomaly, the tambours stay symmetric, the server reveals nothing.
+Towards horror and real danger. 0.3 made players distrust what they see; 0.4 makes the cell push back: it punishes lingering and splitting up, it imitates teammates, it can go dark, and once in a while something comes for the group. The core stays: the base cell is the same every time, any strange sound is an anomaly, the tambours stay symmetric and the loop seamless, the server reveals nothing it shouldn't.
 
-### Fear
+Order of work: the draw-call headroom and the shared groundwork, then the rules (lingering, a bigger samosbor), then the new anomalies (alone, voice, stings), then darkness with the flashlight, then the chaser, then documents, measurements and the playtest. Each step leaves the game playable.
 
-- **Voice mimic.** The client keeps the last few seconds of each teammate's real voice (it already receives it over WebRTC) and, as an anomaly, plays a phrase of theirs from behind a neighbour's door, the pantry or an empty room. Stays on the client; private by nature; not rolled for a teammate who hasn't spoken recently.
-- **Lingering is dangerous.** If the group stays in the cell longer than about 90 s, a distant siren starts, then thin floor-level fog creeps from the vents. A fixed rule tied to cycle time, not an anomaly. Splitting up to check every room gets a real cost.
-- **Being alone is dangerous.** Anomalies that appear only to a player with nobody within a few metres: a breath behind them, a door closing behind them, a teammate's voice from the next room.
-- **A scarier samosbor.** Silhouettes in the fog that are gone a moment later, teammates' voices distorted, heavy breathing in a gas mask. Maybe a longer "big samosbor" after two mistakes in a row.
-- **Rare stings.** Relax "no sharp attacks" for a few deliberate sounds inside anomalies, measured for peak level like the rest.
+### Groundwork
 
-### Threat
+- **Draw-call headroom.** The cell alone already takes 298 of the 300 calls, and a full group of six goes past it. Before anything new is drawn, merge what can be merged (matte materials that differ only by colour, small `keep()` units that never move apart, the stairs and tambour pieces) until the cell alone is at 280 or less. Measured with F3 in every room; the bake order and the loop check unchanged.
+- **Sight on the server** (`shared/sight.ts`): whether a point is seen from a player's position and yaw, in plan only: the view cone and a line against the walls of `ROOMS` with the gaps of `DOORWAYS`, furniture ignored. The server needs it for the chaser; `src/gaze.ts` keeps the finer check with furniture for what only the client decides.
+- **Who is near whom** (`shared/rules.ts`, `ALONE_M`): a player is alone when nobody else who is in the cell stands within this many metres and in the same or an adjacent room. One function, used by the server to roll and by the client to show.
+- **Cycle time on the client**: the time since the cycle began, from the server's `cycle` message (`elapsed` in ms), so every client's lingering rule and timed effects agree within a frame or two, a reconnect included.
 
-- **A chaser**, like the running man in Exit 8: a figure that walks towards the group while not looked at; if it reaches a player, samosbor. Public, from floor 5. Builds on the gaze checks of "Don't look" (`src/gaze.ts`).
-- **Darkness and a dynamo flashlight ("жучок")**: whole wings dark, a flashlight you pump with a key. No live lights in the scene, so the beam is a cone in the shared baked-light shader, one per player.
+### Rules
+
+**Lingering is dangerous.** A fixed rule of every cycle, not an anomaly, so it never tells anything about the cell.
+
+- From `LINGER.siren` (90 s after the cycle began) a distant siren, quieter than the samosbor's, from the next block; from `LINGER.fog` (110 s) a thin layer of samosbor fog over the floor (the existing fog shader at a low density, `SMOG`), thickening; at `LINGER.samosbor` (150 s) the server sets off a samosbor, a mistake like any other, with «Самосбор окончен. Жильцы задержались на этаже».
+- The countdown takes precedence: once someone is out, the clock stops, so a group that is leaving is never caught by it.
+- It must not break the loop: the siren and the fog fade out over the settle time once everyone is out, so nothing cuts off at the transfer. The siren isn't a cell source; it plays everywhere, the tambours included, the same in both zones.
+- Measured: the siren's level against the samosbor's (quieter), nothing above 4 kHz louder than −95 dB.
+
+**A bigger samosbor.** The samosbor itself gets scarier, and a second mistake in a row gets a longer one.
+
+- Silhouettes in the fog: a few dark figures that stand at the edge of visibility and are gone when looked at (`src/gaze.ts`), one instanced draw call, placed from the cycle's seed, not at random.
+- Teammates' voices through a filter while it lasts (band-limited and wavering, as through a gas mask or a wall); a gas-mask breath under your own voice when you wear the GP-5.
+- After two mistakes in a row, a "big samosbor": `SAMOSBOR_BIG_MS` (18 s), the warning twice, the fog reaching the screen later, the siren running down at the end. A mistake is any samosbor, whatever set it off: a wrong verdict (an anomaly missed, or turning back from a clean cycle or a morok), a tie, lingering, the chaser. "In a row" means without a right pass between them; one right pass clears the count. The cycle after a samosbor starts on floor 0 and may hold an anomaly, so getting it wrong is the second in a row. `Room` keeps the count; the phase and the `cycle` message stay the same, with `big: true`.
+- Its peaks stay the loudest in the game; the siren and announcement re-measured.
+
+### New anomalies
+
+**Alone** (`alone: true` in the catalogue). They happen only to a player with nobody near (`ALONE_M`): a breath right behind them, a door closing behind them in the room they just left, a teammate calling their name from the next room (with the voice mimic, below), footsteps that stop when they stop. Rolled like any anomaly; the client holds it back until its witness is alone, then plays it once. Public ones fire for whoever is alone first. On the verdict screen they read as usual: «Отклонение: дыхание за спиной».
+
+**Voice mimic.**
+
+- The client keeps the last 8 s of each teammate's voice in a ring buffer (an `AudioWorklet` on the source `voice.ts` already has), only on this machine, never sent anywhere; cut into phrases by the voice level it already measures.
+- As an anomaly, one of those phrases plays from behind a neighbour's door (flats 43–48, so it never reaches the back zone), from the pantry or from an empty room, through the walls like any emitter. Private by nature: each client has its own recordings.
+- Rolled only for a witness who has heard a teammate: the client sends `{ t: 'heard', id }` once it holds a phrase of that teammate; the server keeps the set, validated like every other message, and forgets it when either leaves.
+- The lobby's voice checkbox says that teammates' voices may be repeated by the cell, on this machine only.
+
+**Rare stings.** "No sharp attacks" is relaxed for a few deliberate sounds inside anomalies: a door slamming when you turn your back on it, the phone's single ring right beside you, a knock on the wall at your ear. Each with a peak limit below the samosbor's (0.15), measured like the rest; never in a normal cell.
+
+### Darkness and the flashlight
+
+**Blackout cycles.** Some cycles the power is off everywhere: the flat, the landing, the corridor and the tambours. «Плановое отключение электроэнергии» on the radio and a notice on the board. It's a condition the whole group is told about, not an anomaly, so darkness says nothing by itself; anomalies happen in it as usual, except those made of light (light off, flickering lamp, wrong light, broken bulb), which are left out of the pool. From floor 4, one cycle in six or so, never twice in a row; the server sends `dark: true` to everyone. The street lamps and the other blocks' windows stay lit: only our building is off.
+
+- **The loop.** A player in the zone is carried into the next cycle's back tambour, and its picture has to match the one they left. So the light never changes at the transfer: each cycle starts with the lamps as the last one ended, and the switch comes `DARK_SWITCH` (4 s) after the cycle began, everywhere at once, with the clunk of the breaker and the hum dying (or coming back). A blackout cycle starts lit and goes dark; the cycle after it starts dark and comes back on. Both tambours are always in the same state when the group leaves, so the transfer stays pixel-exact and the zones sound the same.
+- **The bake** stays as it is: switching off is `lamp.set(0)` on every channel, the tambour lamps included, which is already how light anomalies work; the samosbor's red light still comes on over it.
+
+**The dynamo flashlight («жучок»).**
+
+- Pumped with a key (held or tapped), it charges a little with each squeeze and fades over about 20 s; the whirr is ours, like footsteps. Everyone has one; it's only useful in the dark, so it only shows up in blackout cycles.
+- Its beam is a cone in the shared baked-light shader: up to six beams as uniforms (position, direction, strength), added to the baked light per vertex for the cell and per probe for characters. No shadow maps: so a beam doesn't shine through walls, each vertex carries the room it belongs to (a new bake attribute), and a beam lights only its own room and the doorway it points through.
+- Teammates' beams come from their position and yaw in `pos`, plus a strength they send (a byte, validated); others see where you shine.
+- Tambours: a beam in a tambour lights its instances by their own geometry, the same for both halves, so the loop stays pixel-exact; checked like the rest.
+
+### The chaser
+
+A figure that comes for the group, like the running man in Exit 8. It's an anomaly (`chaser`, tier 2, public, from floor 5): the right answer is back, and it makes the way back dangerous.
+
+- It appears at the far end of the flat (the bedroom or the loggia) once the first player enters the living room, and walks towards the nearest player, through the doorways, faster than a walk, but only while nobody looks at it (`shared/sight.ts` on the server, with everyone's positions and yaws); when anyone sees it, it stands still.
+- If it reaches a player, a samosbor at once, with «Самосбор окончен. Отклонение: бегущий. Он догнал Петрова».
+- The server runs it and sends its position with the others' (`pos` gets one more entry); clients draw it and smooth it like an avatar. One draw call.
+- It never goes past the blast doors; looking back at it while walking backwards to the landing is how a group gets out.
+
+### Documents and release
+
+- `docs/DESIGN.md`: the lingering rule, the bigger samosbor and the big one, blackout cycles and the flashlight in the rules; the new anomalies in the catalogue; the chaser.
+- `AGENTS.md`: `shared/sight.ts`, the flashlight's place in the bake shader and the per-vertex room, the voice ring buffer and the `heard` message, `dark` and `big` in `cycle`, the chaser in `pos`; the invariants that change (sharp attacks allowed in a few anomalies, with their peak limit; recordings never leave the machine).
+- Measured before release: draw calls alone and with six players, the bake time with the new attribute, brightness in a blackout with and without beams, the loop pixel check with a beam in the zone, sound in the tambour zones with the lingering siren.
+- Group playtest; from the verdict log: how often groups get caught lingering, how often the chaser catches someone, how often an alone anomaly is missed.
 
 ## 0.5 "Lore Accuracy"
 
@@ -70,7 +125,7 @@ A bigger catalogue, so that a group that has played a few rounds still meets ano
 - **Fill the gaps.** Count the anomalies by room and by tier and add where there are few: the hallway passage, the toilet, the loggia and the landing have the fewest; tier 3 needs the most, since it is what a group that knows the cell plays for.
 - **Kinds the catalogue lacks**: changes of geometry that the loop allows (a neighbour's door number swapped, one more door in the corridor, a radiator section missing), changes in time (the pendulum clock showing the wrong hour, the calendar a day off, the meter's reading), small changes of texture (the wallpaper pattern, the stencil's font, the notice's signature), sounds in rooms that have none.
 - **Every new one decides** whether it can be a morok (`morok: 'sight' | 'sound'`, never for what takes away or is made of light), how many players it needs and whether it can be private; it gets its seed-driven variants, a sound measured like the rest, and nothing asymmetric near the tambours.
-- **Draw calls first.** The cell already takes 298 of the 300 alone; new props that move need `keep()` and a call each, so the cell is trimmed before the catalogue grows.
+- **Within the draw calls.** New props that move need `keep()` and a call each; the headroom won in 0.4 is spent carefully, and the cell alone stays at 280 or less.
 - **Tiers from the verdict log**: anomalies nobody misses move down a tier, those nobody notices move up or are made clearer.
 
 ## 0.9 "Mobile"
