@@ -14,7 +14,8 @@ Order of work: the draw-call headroom and the shared groundwork, then the rules 
 
 - **Draw-call headroom.** The cell alone already takes 298 of the 300 calls, and a full group of six goes past it. Before anything new is drawn, merge what can be merged (matte materials that differ only by colour, small `keep()` units that never move apart, the stairs and tambour pieces) until the cell alone is at 280 or less. Measured with F3 in every room; the bake order and the loop check unchanged.
 - **Sight on the server** (`shared/sight.ts`): whether a point is seen from a player's position and yaw, in plan only: the view cone and a line against the walls of `ROOMS` with the gaps of `DOORWAYS`, furniture ignored. The server needs it for the chaser; `src/gaze.ts` keeps the finer check with furniture for what only the client decides.
-- **Who is near whom** (`shared/rules.ts`, `ALONE_M`): a player is alone when nobody else who is in the cell stands within this many metres and in the same or an adjacent room. One function, used by the server to roll and by the client to show.
+- **Who is near whom** (`ALONE_M` in `shared/rules.ts`): a player is alone when nobody else who is in the cell stands within this many metres and in the same or an adjacent room. Decided by each client for its own player.
+- **Walking the cell on the server.** The route through the doorways that the extra resident uses (`src/stranger.ts`: the room graph, the points either side of a doorway, sliding round furniture with `canStand`) moves to `shared/`, so the server can walk the chaser with it and the extra keeps using it on the client.
 - **Cycle time on the client**: the time since the cycle began, from the server's `cycle` message (`elapsed` in ms), so every client's lingering rule and timed effects agree within a frame or two, a reconnect included.
 
 ### Rules
@@ -23,7 +24,7 @@ Order of work: the draw-call headroom and the shared groundwork, then the rules 
 
 - From `LINGER.siren` (90 s after the cycle began) a distant siren, quieter than the samosbor's, from the next block; from `LINGER.fog` (110 s) a thin layer of samosbor fog over the floor (the existing fog shader at a low density, `SMOG`), thickening; at `LINGER.samosbor` (150 s) the server sets off a samosbor, a mistake like any other, with «Самосбор окончен. Жильцы задержались на этаже».
 - The countdown takes precedence: once someone is out, the clock stops, so a group that is leaving is never caught by it.
-- It must not break the loop: the siren and the fog fade out over the settle time once everyone is out, so nothing cuts off at the transfer. The siren isn't a cell source; it plays everywhere, the tambours included, the same in both zones.
+- It must not break the loop: the siren and the fog fade out as soon as the first player is out, within 1.5 s, less than the walk from the blast door to the zone, so nothing cuts off at the transfer (with everyone in the zone the verdict comes at once, there is no settle time to fade in). The siren isn't a cell source; it plays everywhere, the tambours included, the same in both zones.
 - Measured: the siren's level against the samosbor's (quieter), nothing above 4 kHz louder than −95 dB.
 
 **A bigger samosbor.** The samosbor itself gets scarier, and a second mistake in a row gets a longer one.
@@ -35,12 +36,12 @@ Order of work: the draw-call headroom and the shared groundwork, then the rules 
 
 ### New anomalies
 
-**Alone** (`alone: true` in the catalogue). They happen only to a player with nobody near (`ALONE_M`): a breath right behind them, a door closing behind them in the room they just left, a teammate calling their name from the next room (with the voice mimic, below), footsteps that stop when they stop. Rolled like any anomaly; the client holds it back until its witness is alone, then plays it once. Public ones fire for whoever is alone first. On the verdict screen they read as usual: «Отклонение: дыхание за спиной».
+**Alone** (`alone: true` in the catalogue, never private). They happen only to a player with nobody near (`ALONE_M`): a breath right behind them, a door closing behind them in the room they just left, a teammate calling their name from the next room (with the voice mimic, below, or the formant murmur of "Radio says a name" when there is no recording), footsteps that stop when they stop. Rolled like any anomaly and sent to everyone; each client holds it back until its own player is alone, then plays it once. Several players who each wander off each meet it; a group that never splits up never does, and its verdict is a miss like any other. On the verdict screen they read as usual: «Отклонение: дыхание за спиной».
 
 **Voice mimic.**
 
 - The client keeps the last 8 s of each teammate's voice in a ring buffer (an `AudioWorklet` on the source `voice.ts` already has), only on this machine, never sent anywhere; cut into phrases by the voice level it already measures.
-- As an anomaly, one of those phrases plays from behind a neighbour's door (flats 43–48, so it never reaches the back zone), from the pantry or from an empty room, through the walls like any emitter. Private by nature: each client has its own recordings.
+- As an anomaly, one of those phrases plays from behind a neighbour's door (flats 43–48, so it never reaches the back zone), from the pantry or from an empty room, through the walls like any emitter, levelled to the other anomaly sounds. Private by nature: each client has its own recordings. It can be a morok (`morok: 'sound'`): the phrase plays dry.
 - Rolled only for a witness who has heard a teammate: the client sends `{ t: 'heard', id }` once it holds a phrase of that teammate; the server keeps the set, validated like every other message, and forgets it when either leaves.
 - The lobby's voice checkbox says that teammates' voices may be repeated by the cell, on this machine only.
 
@@ -48,31 +49,36 @@ Order of work: the draw-call headroom and the shared groundwork, then the rules 
 
 ### Darkness and the flashlight
 
-**Blackout cycles.** Some cycles the power is off everywhere: the flat, the landing, the corridor and the tambours. «Плановое отключение электроэнергии» on the radio and a notice on the board. It's a condition the whole group is told about, not an anomaly, so darkness says nothing by itself; anomalies happen in it as usual, except those made of light (light off, flickering lamp, wrong light, broken bulb), which are left out of the pool. From floor 4, one cycle in six or so, never twice in a row; the server sends `dark: true` to everyone. The street lamps and the other blocks' windows stay lit: only our building is off.
+**Blackout cycles.** Some cycles the power is off everywhere: the flat, the landing, the corridor and the tambours. «Плановое отключение электроэнергии» over the building's loudspeakers, heard everywhere like the samosbor's warning (the kitchen radio reaches only a few metres), and a notice on the board. It's a condition the whole group is told about, not an anomaly, so darkness says nothing by itself; anomalies happen in it as usual, except those made of light (light off, flickering lamp, wrong light, broken bulb), which are left out of the pool. From floor 4, one cycle in six or so, never twice in a row; the server sends `dark: true` to everyone. The street lamps and the other blocks' windows stay lit: only our building is off.
 
 - **The loop.** A player in the zone is carried into the next cycle's back tambour, and its picture has to match the one they left. So the light never changes at the transfer: each cycle starts with the lamps as the last one ended, and the switch comes `DARK_SWITCH` (4 s) after the cycle began, everywhere at once, with the clunk of the breaker and the hum dying (or coming back). A blackout cycle starts lit and goes dark; the cycle after it starts dark and comes back on. Both tambours are always in the same state when the group leaves, so the transfer stays pixel-exact and the zones sound the same.
 - **The bake** stays as it is: switching off is `lamp.set(0)` on every channel, the tambour lamps included, which is already how light anomalies work; the samosbor's red light still comes on over it.
+- **Reflections.** The environment maps were captured with the lamps on and don't know they're off: in the dark, varnish, tiles and glass would mirror a lit room. They fade out with the lamps (`envMapIntensity` to 0) and come back with them; the real mirrors render as they are.
+- **Brightness.** A blackout breaks the 0.25–0.40 rule on purpose; it is written down as the one exception. What is measured instead: the windows and the street light still let a player find the way without a beam, and a beam's spot doesn't burn out (under 1% of overexposed pixels).
 
 **The dynamo flashlight («жучок»).**
 
 - Pumped with a key (held or tapped), it charges a little with each squeeze and fades over about 20 s; the whirr is ours, like footsteps. Everyone has one; it's only useful in the dark, so it only shows up in blackout cycles.
-- Its beam is a cone in the shared baked-light shader: up to six beams as uniforms (position, direction, strength), added to the baked light per vertex for the cell and per probe for characters. No shadow maps: so a beam doesn't shine through walls, each vertex carries the room it belongs to (a new bake attribute), and a beam lights only its own room and the doorway it points through.
+- Its beam is a cone in the shared baked-light shader (`useBaked`): up to six beams as uniforms (position, direction, strength), computed per fragment from the world position and the normal, since the tiles are about a metre and a beam's spot drawn per vertex would come out smeared and angular. Characters get it the same way, per fragment, on top of their probe.
+- No shadow maps. So a beam doesn't shine through walls, each vertex carries the room it belongs to (a new bake attribute, passed on flat), and a beam lights its own room, plus the next room only through the doorway rectangle it points through. Furniture casts no shadow from a beam: the wall behind a wardrobe is lit too. Accepted.
+- This is the first light that isn't baked: the invariant "light is baked only" in `AGENTS.md` gets the exception, where it lives and why it keeps the loop.
 - Teammates' beams come from their position and yaw in `pos`, plus a strength they send (a byte, validated); others see where you shine.
 - Tambours: a beam in a tambour lights its instances by their own geometry, the same for both halves, so the loop stays pixel-exact; checked like the rest.
 
 ### The chaser
 
-A figure that comes for the group, like the running man in Exit 8. It's an anomaly (`chaser`, tier 2, public, from floor 5): the right answer is back, and it makes the way back dangerous.
+A figure that comes for the group, like the running man in Exit 8. It's an anomaly («Преследователь», `chaser`, tier 2, never private, from floor 5; the name checked against the canon in 0.5): the right answer is back, and it makes the way back dangerous.
 
-- It appears at the far end of the flat (the bedroom or the loggia) once the first player enters the living room, and walks towards the nearest player, through the doorways, faster than a walk, but only while nobody looks at it (`shared/sight.ts` on the server, with everyone's positions and yaws); when anyone sees it, it stands still.
-- If it reaches a player, a samosbor at once, with «Самосбор окончен. Отклонение: бегущий. Он догнал Петрова».
+- It appears at the far end of the flat (the bedroom or the loggia) once the first player enters the living room, and walks towards the nearest player, through the doorways (the route moved to `shared/`), faster than a walk, but only while nobody looks at it (`shared/sight.ts` on the server, with everyone's positions and yaws, its cone a little wider than the screen to cover the delay of positions); when anyone sees it, it stands still.
+- Its footsteps are heard while it moves, so silence is the sign it is being watched: an anomaly sound with a hard range like the rest, which never reaches the tambour zones.
+- If it reaches a player, a samosbor at once, with «Самосбор окончен. Отклонение: преследователь. Он догнал Петрова».
 - The server runs it and sends its position with the others' (`pos` gets one more entry); clients draw it and smooth it like an avatar. One draw call.
 - It never goes past the blast doors; looking back at it while walking backwards to the landing is how a group gets out.
 
 ### Documents and release
 
 - `docs/DESIGN.md`: the lingering rule, the bigger samosbor and the big one, blackout cycles and the flashlight in the rules; the new anomalies in the catalogue; the chaser.
-- `AGENTS.md`: `shared/sight.ts`, the flashlight's place in the bake shader and the per-vertex room, the voice ring buffer and the `heard` message, `dark` and `big` in `cycle`, the chaser in `pos`; the invariants that change (sharp attacks allowed in a few anomalies, with their peak limit; recordings never leave the machine).
+- `AGENTS.md`: `shared/sight.ts` and the walking route in `shared/`, the flashlight's place in the bake shader and the per-vertex room, the voice ring buffer and the `heard` message, `dark` and `big` in `cycle`, the chaser in `pos`; the invariants that change (light is no longer baked only: the beams; brightness: the blackout exception; sharp attacks allowed in a few anomalies, with their peak limit; recordings never leave the machine).
 - Measured before release: draw calls alone and with six players, the bake time with the new attribute, brightness in a blackout with and without beams, the loop pixel check with a beam in the zone, sound in the tambour zones with the lingering siren.
 - Group playtest; from the verdict log: how often groups get caught lingering, how often the chaser catches someone, how often an alone anomaly is missed.
 
