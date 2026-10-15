@@ -20,7 +20,21 @@ export const MAX_PLAYERS = 6;
  */
 export const SAMOSBOR_MS = 10_000;
 /** When each part of it comes, seconds from the verdict (src/samosbor.ts tells them in order). */
-export const SAMOSBOR = { warn: 0.8, fog: 2.5, flicker: 6, veil: 7.8, covered: 8.8, silence: 9.4 };
+export const SAMOSBOR = { warn: 0.8, again: null as number | null, fog: 2.5, flicker: 6, veil: 7.8, covered: 8.8, silence: 9.4 };
+/**
+ * The second mistake in a row without a right pass between them brings a big samosbor: longer, the
+ * warning twice, the fog reaching the screen later, the siren running down at the end.
+ */
+export const SAMOSBOR_BIG_MS = 18_000;
+export const SAMOSBOR_BIG = { warn: 0.8, again: 6.5, fog: 3, flicker: 12.5, veil: 15.6, covered: 16.8, silence: 17.4 };
+export type SamosborTimes = typeof SAMOSBOR;
+
+/**
+ * Lingering is dangerous (docs/DESIGN.md): ms from the start of a cycle. A distant siren from the
+ * next block, then a thin layer of fog over the floor, thickening, then the server sets off a
+ * samosbor. The clock doesn't run while anyone is out: a group that is leaving is never caught.
+ */
+export const LINGER = { siren: 90_000, fog: 110_000, samosbor: 150_000 };
 
 /**
  * A player is alone when nobody else in the cell stands within this many metres of them in the same

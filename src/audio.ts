@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { rng } from './textures.ts';
 import { roomAt, type RoomId } from '../shared/map.ts';
-import { SAMOSBOR, SAMOSBOR_MS } from '../shared/rules.ts';
+import { SAMOSBOR, SAMOSBOR_MS, type SamosborTimes } from '../shared/rules.ts';
 import { acousticsAt, creaks, footingAt, listenerRoom, reachesZone, separation, type Acoustics, type Ambient, type Footing } from './world/ambience.ts';
 import type { Emitter, Lamp, World } from './world/index.ts';
 
@@ -25,6 +25,8 @@ const SIREN_LOW = 250;
 const SIREN_HIGH = 440;
 /** One swing of the wail, down and back up, seconds. */
 const SIREN_WAIL = 3.2;
+/** The lingering siren (linger.ts): another block's, far off, well under the samosbor's own. */
+const FAR_SIREN_GAIN = 0.03;
 /** The announcer over the building's loudspeakers (the samosbor warning, the all clear). */
 const SPEAKER_GAIN = 0.25;
 /** How loud each kind of lamp hums, and how much it crackles. Only the kitchen tube really buzzes. */
@@ -119,6 +121,8 @@ export class Sound {
   private readonly crackles: AudioNode[] = [];
   private tune: AudioBuffer | null = null;
   private sirenWave: PeriodicWave | null = null;
+  /** The lingering siren's output, made the first time it is needed and left running. */
+  private farSiren: GainNode | null = null;
   private tuneBack: AudioBuffer | null = null;
   private lampVoices: { lamp: Lamp; gain: GainNode; wall: Wall; nodes: AudioNode[] }[] = [];
   private ambient: AmbientVoice[] = [];
@@ -294,12 +298,13 @@ export class Sound {
    * The samosbor (docs/DESIGN.md, 7.1), all scheduled at once from now (samosbor.ts, SAMOSBOR): a
    * motor siren on the roof of the next block winds up, wails up and down and runs down at the end;
    * the warning over the loudspeakers; wet squelching all round once the fog is thick;
-   * silence by the end. The cell's own background is switched off by the world (samosbor.ts).
+   * silence by the end. The cell's own background is switched off by the world (samosbor.ts). The
+   * big one (SAMOSBOR_BIG) lasts longer and says the warning twice.
    */
-  samosbor() {
+  samosbor(times: SamosborTimes = SAMOSBOR, ms = SAMOSBOR_MS) {
     const ctx = this.ctx;
     const t = ctx.currentTime;
-    const end = t + SAMOSBOR_MS / 1000;
+    const end = t + ms / 1000;
     // the rotor's speed: spin up, a slow wail, run down
     const speed = ctx.createConstantSource();
     const f = speed.offset;
@@ -363,17 +368,67 @@ export class Sound {
     speaker.connect(this.filter('highpass', 300, 0.7)).connect(this.filter('lowpass', 1600, 0.7)).connect(this.master);
     if ('speechSynthesis' in window) speechSynthesis.cancel();
     const words = ['внимание', 'самосбор', 'всем', 'жильцам', 'немедленно', 'укрыться', 'в', 'гермоблоках'];
-    this.announce(t + SAMOSBOR.warn, words, speaker, 'Внимание! Самосбор! Всем жильцам немедленно укрыться в гермоблоках!', 0.15, 0.95, 0.6);
+    const warning = 'Внимание! Самосбор! Всем жильцам немедленно укрыться в гермоблоках!';
+    this.announce(t + times.warn, words, speaker, warning, 0.15, 0.95, 0.6);
+    if (times.again !== null) this.announce(t + times.again, words, speaker, warning, 0.15, 0.95, 0.6);
 
     // something wet, close by and all round, once the fog is thick
     const r = rng(4242);
     for (let i = 0; i < 16; i++) {
-      const at = t + SAMOSBOR.flicker + r() * (SAMOSBOR.covered - SAMOSBOR.flicker);
+      const at = t + times.flicker + r() * (times.covered - times.flicker);
       const p = ctx.createStereoPanner();
       p.pan.value = r() * 1.6 - 0.8;
       p.connect(this.master);
       this.squelch(at, 0.5 + r() * 0.5, 90 + r() * 70, p);
     }
+  }
+
+  /**
+   * The siren of a block across the yard when the group lingers (linger.ts), `level` 0..1 every
+   * frame. The same everywhere, the vestibules included: not a source of the cell.
+   */
+  distantSiren(level: number) {
+    if (!this.farSiren && level <= 0) return;
+    this.farSiren ??= this.makeFarSiren();
+    this.farSiren.gain.setTargetAtTime(level * FAR_SIREN_GAIN, this.ctx.currentTime, 0.08);
+  }
+
+  /** A slow steady wail, its top taken off by the distance, thrown back by the blocks around. */
+  private makeFarSiren() {
+    const ctx = this.ctx;
+    const speed = ctx.createConstantSource();
+    speed.offset.value = (SIREN_LOW + SIREN_HIGH) / 2;
+    const wail = ctx.createOscillator();
+    wail.frequency.value = 1 / (SIREN_WAIL * 1.4);
+    wail.connect(this.gain((SIREN_HIGH - SIREN_LOW) / 2)).connect(speed.offset);
+    this.sirenWave ??= ctx.createPeriodicWave(new Float32Array(9), Float32Array.from([0, 1, 0.42, 0.6, 0.22, 0.32, 0.1, 0.16, 0.06]));
+    const tone = this.filter('lowpass', 700, 0.5);
+    for (const [cents, level] of [[-11, 0.6], [0, 1], [8, 0.6]] as const) {
+      const o = ctx.createOscillator();
+      o.setPeriodicWave(this.sirenWave);
+      o.frequency.value = 0;
+      o.detune.value = cents;
+      speed.connect(o.frequency);
+      o.connect(this.gain(level * 0.4)).connect(tone);
+      o.start();
+    }
+    speed.start();
+    wail.start();
+    const out = this.gain(0);
+    tone.connect(this.filter('lowpass', 900, 0.6)).connect(out);
+    for (const [pan, delay] of [[-0.6, 0], [0.6, 0.021]]) {
+      const d = ctx.createDelay(0.05);
+      d.delayTime.value = delay;
+      const p = ctx.createStereoPanner();
+      p.pan.value = pan;
+      out.connect(d).connect(p).connect(this.master);
+    }
+    const echo = ctx.createDelay(1.5);
+    echo.delayTime.value = 0.71;
+    const back = this.gain(0.4);
+    out.connect(echo).connect(this.filter('lowpass', 600, 0.6)).connect(back).connect(echo);
+    back.connect(this.gain(0.8)).connect(this.master);
+    return out;
   }
 
   /** The all clear on the radio after the last floor: the call sign, then the announcer. */

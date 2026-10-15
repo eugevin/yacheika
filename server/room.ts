@@ -7,8 +7,10 @@ import {
   COUNTDOWN_MS,
   SETTLE_MS,
   GOAL,
+  LINGER,
   MAX_PLAYERS,
   RECENT_LIMIT,
+  SAMOSBOR_BIG_MS,
   SAMOSBOR_MS,
   maxDifficulty,
   morokChance,
@@ -100,6 +102,10 @@ export class Room {
   private startedAt: number | null = null;
   private samosbors = 0;
   private moroks = 0;
+  /** Samosbors since the last right pass: the second in a row is the big one. */
+  private mistakes = 0;
+  /** The samosbor going on is the big one. */
+  private big = false;
   private run: RunStats | null = null;
   private ticks = 0;
   /** Time of the last tick (tests pass their own clock), and when the current cycle began by it. */
@@ -190,6 +196,11 @@ export class Room {
         this.countdownEnd = null;
         this.broadcast({ t: 'countdown_off' });
       }
+      // nobody is leaving: the floor itself runs out of patience (the clock doesn't run while anyone is out)
+      if (now - this.cycleStart >= LINGER.samosbor) {
+        console.log(`verdict ${this.code} floor ${this.cycle}: ${this.anomaly?.id ?? 'clean'}, lingered`);
+        this.mistake(now, { reason: 'linger' });
+      }
       return;
     }
     this.countdownEnd ??= now + COUNTDOWN_MS;
@@ -223,6 +234,7 @@ export class Room {
     this.startedAt = null;
     this.samosbors = 0;
     this.moroks = 0;
+    this.mistakes = 0;
     this.run = null;
     this.newCycle(true);
   }
@@ -281,31 +293,16 @@ export class Room {
     // one line per verdict, to see which anomalies nobody notices and which are too obvious
     const seen = this.anomaly ? `${this.anomaly.id}${this.anomaly.only !== null ? ' (private)' : ''}` : this.morok ? `clean (morok ${this.morok.id})` : 'clean';
     console.log(`verdict ${this.code} floor ${this.cycle}: ${seen}, ${choice ?? 'tie'}, ${correct ? 'right' : 'wrong'}, ${forward + back}/${choices.length} out`);
-    this.cycle = correct ? this.cycle + 1 : 0;
-    const won = this.cycle >= GOAL;
-    const a = this.anomaly;
-    const m = this.morok;
-    if (m && choice === 'back') this.moroks++;
-    this.broadcast({ t: 'countdown_off' });
-    this.broadcast({
-      t: 'result',
-      correct,
-      split,
-      choice,
-      anomaly: a && { name: a.name, seenBy: a.only === null ? null : (this.players.get(a.only)?.name ?? '???') },
-      morok: m && { name: m.name, seenBy: this.players.get(m.only)?.name ?? '???' },
-      cycle: this.cycle,
-      won,
-    });
+    if (this.morok && choice === 'back') this.moroks++;
     if (!correct) {
-      this.phase = 'samosbor';
-      this.samosborEnd = now + SAMOSBOR_MS;
-      this.samosbors++;
-      this.anomaly = null;
-      this.morok = null;
-      this.sendCycle();
+      this.mistake(now, { split, choice });
       return;
     }
+    this.cycle++;
+    this.mistakes = 0;
+    const won = this.cycle >= GOAL;
+    this.broadcast({ t: 'countdown_off' });
+    this.broadcast({ t: 'result', correct, split, choice, ...this.told(), cycle: this.cycle, won });
     if (!won) {
       this.newCycle(false);
       return;
@@ -313,6 +310,48 @@ export class Room {
     this.run = { ms: now - (this.startedAt ?? now), samosbors: this.samosbors, moroks: this.moroks };
     this.phase = 'won';
     this.cycleId++;
+    this.countdownEnd = null;
+    this.settleEnd = null;
+    this.anomaly = null;
+    this.morok = null;
+    this.sendCycle();
+  }
+
+  /** What the cycle held, told once it is decided: the anomaly and who alone saw it, or the morok. */
+  private told() {
+    const a = this.anomaly;
+    const m = this.morok;
+    return {
+      anomaly: a && { name: a.name, seenBy: a.only === null ? null : (this.players.get(a.only)?.name ?? '???') },
+      morok: m && { name: m.name, seenBy: this.players.get(m.only)?.name ?? '???' },
+    };
+  }
+
+  /**
+   * Any mistake: a wrong choice, a tie, lingering, the chaser. A samosbor in the cell the group is
+   * in; exits don't count while it lasts, and the cycle after it starts from floor 0 behind a fade.
+   * The second in a row without a right pass between them is the big one.
+   */
+  private mistake(now: number, how: { split?: boolean; choice?: Exit | null; reason?: 'linger' | 'caught'; caught?: string }) {
+    this.cycle = 0;
+    this.mistakes++;
+    this.big = this.mistakes >= 2;
+    this.broadcast({ t: 'countdown_off' });
+    this.broadcast({
+      t: 'result',
+      correct: false,
+      split: how.split ?? false,
+      choice: how.choice ?? null,
+      ...this.told(),
+      cycle: 0,
+      won: false,
+      ...(how.reason ? { reason: how.reason } : {}),
+      ...(how.caught ? { caught: how.caught } : {}),
+      ...(this.big ? { big: true } : {}),
+    });
+    this.phase = 'samosbor';
+    this.samosborEnd = now + (this.big ? SAMOSBOR_BIG_MS : SAMOSBOR_MS);
+    this.samosbors++;
     this.countdownEnd = null;
     this.settleEnd = null;
     this.anomaly = null;
@@ -337,6 +376,7 @@ export class Room {
       elapsed: Math.max(0, this.clock - this.cycleStart),
       anomalies: visible ? [{ id: a.id, seed: a.seed }] : m ? [{ id: m.id, seed: m.seed, morok: true }] : [],
       ...(this.phase === 'won' && this.run ? { run: this.run } : {}),
+      ...(this.phase === 'samosbor' && this.big ? { big: true as const } : {}),
     };
   }
 

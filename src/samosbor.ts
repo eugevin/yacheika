@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FURNITURE } from '../shared/furniture.ts';
 import { DOORWAYS, VESTIBULES, doorRect, toWorld } from '../shared/map.ts';
-import { SAMOSBOR } from '../shared/rules.ts';
+import { SAMOSBOR, type SamosborTimes } from '../shared/rules.ts';
 import { canvasTexture, rng } from './textures.ts';
 import { NORMAL } from './world/geometry.ts';
 import { CHANNELS, DAYLIGHT } from './world/lighting.ts';
@@ -11,19 +11,16 @@ import type { World } from './world/index.ts';
 
 /**
  * A samosbor (docs/DESIGN.md, 7.1, 4.7), played over the cell the group got wrong; the cell is
- * rebuilt afterwards, so nothing here is undone. Times are seconds from the verdict (SAMOSBOR):
+ * rebuilt afterwards, so nothing here is undone. Times are seconds from the verdict (SAMOSBOR, or
+ * SAMOSBOR_BIG for the second mistake in a row, which is longer and slower):
  *   0.0  every lamp goes red and dim, the windows grey out, the siren winds up (audio.ts, Sound.samosbor);
- *   0.8  the warning on the loudspeakers (main.ts shows it);
+ *   0.8  the warning on the loudspeakers (main.ts shows it), the big one says it again later;
  *   2.5  rusty fog pours from the vents and from under the doors, and thickens: you see 40 m, then 2;
+ *        dark figures stand at the edge of what can be seen, and are gone when looked at;
  *   6.0  squelching all round, the light stutters, the edges of the screen swim;
  *   8.8  the fog has covered the screen;
  *   9.4  the cell's background goes quiet, and the server starts the next cycle at 10 (SAMOSBOR_MS).
  */
-const FOG_FROM = SAMOSBOR.fog;
-const FOG_FULL = SAMOSBOR.covered;
-const FLICKER_FROM = SAMOSBOR.flicker;
-const VEIL_FROM = SAMOSBOR.veil;
-const SILENCE_AT = SAMOSBOR.silence;
 /** Seeing distance, metres, as the fog comes in. */
 const SEE_FROM = 40;
 const SEE_TO = 2;
@@ -59,6 +56,7 @@ interface Puff {
 export class Samosbor {
   /** Seconds since the verdict. */
   t = 0;
+  readonly times: SamosborTimes;
   private readonly world: World;
   private readonly sources: Source[];
   private readonly puffs: Puff[] = [];
@@ -69,9 +67,10 @@ export class Samosbor {
   private readonly r = rng(1711);
   private next: number[];
 
-  constructor(world: World) {
+  constructor(world: World, times: SamosborTimes = SAMOSBOR) {
     this.world = world;
-    this.sources = sources(world);
+    this.times = times;
+    this.sources = sources(world, times.fog);
     this.next = this.sources.map((s) => s.from);
     this.daylight = CHANNELS.value[DAYLIGHT].clone();
     for (const l of world.lamps) l.tint(EMERGENCY);
@@ -100,20 +99,21 @@ export class Samosbor {
 
   /** How much of the screen the fog has covered, 0..1 (the full-screen veil). */
   get veil() {
-    return THREE.MathUtils.smoothstep(this.t, VEIL_FROM, FOG_FULL);
+    return THREE.MathUtils.smoothstep(this.t, this.times.veil, this.times.covered);
   }
 
   /** How far the swimming at the screen edges has got, 0..1. */
   get warp() {
-    return THREE.MathUtils.smoothstep(this.t, FLICKER_FROM, FOG_FULL);
+    return THREE.MathUtils.smoothstep(this.t, this.times.flicker, this.times.covered);
   }
 
   update(dt: number) {
     this.t += dt;
     const t = this.t;
+    const times = this.times;
     // the light: red and dim at once, stuttering later, a deterministic stutter
     let level = EMERGENCY_LEVEL;
-    if (t >= FLICKER_FROM) {
+    if (t >= times.flicker) {
       const k = Math.floor(t * 14);
       const n = Math.sin(k * 12.9898) * 43758.5453;
       const r = n - Math.floor(n);
@@ -121,11 +121,11 @@ export class Samosbor {
     }
     for (const l of this.world.lamps) l.set(level);
     CHANNELS.value[DAYLIGHT].copy(this.daylight).multiplyScalar(0.3 * (level / EMERGENCY_LEVEL));
-    if (t >= SILENCE_AT) this.world.silent = true;
+    if (t >= times.silence) this.world.silent = true;
 
     // the fog: seeing distance along the floor falls from 40 m to 2 m; it lies low at first, a
     // layer over the floor, and rises as it thickens
-    const f = THREE.MathUtils.smoothstep(t, FOG_FROM, FOG_FULL) ** 1.4;
+    const f = THREE.MathUtils.smoothstep(t, times.fog, times.covered) ** 1.4;
     const see = SEE_FROM * (SEE_TO / SEE_FROM) ** f;
     const per = f > 0 ? 3 / see : 0;
     SMOG.uSmogEven.value = per * 0.12;
@@ -200,12 +200,12 @@ export function clearSmog() {
  * Where the fog comes in: the vents of the kitchen and the wet rooms, under the neighbours' doors
  * and the pantry door, out of the rubbish chute, and both vestibules from either end.
  */
-function sources(world: World): Source[] {
+function sources(world: World, fogFrom: number): Source[] {
   const list: Source[] = [];
   const add = (p: THREE.Vector3, dir: THREE.Vector3, high: boolean, from: number) => list.push({ p, dir: dir.setY(0).normalize(), high, from });
   for (const v of VENTS) {
     const [nx, nz] = NORMAL[v.facing];
-    add(new THREE.Vector3(v.x + nx * 0.15, v.y - 0.05, v.z + nz * 0.15), new THREE.Vector3(nx, 0, nz), true, FOG_FROM);
+    add(new THREE.Vector3(v.x + nx * 0.15, v.y - 0.05, v.z + nz * 0.15), new THREE.Vector3(nx, 0, nz), true, fogFrom);
   }
   const o = new THREE.Vector3();
   const out = new THREE.Vector3();
@@ -214,18 +214,18 @@ function sources(world: World): Source[] {
     const frame = leaf.parent!;
     frame.localToWorld(o.set(0, 0.1, 0.15));
     frame.localToWorld(out.set(0, 0.1, 1.15));
-    add(o.clone(), out.clone().sub(o), false, FOG_FROM + 0.3);
+    add(o.clone(), out.clone().sub(o), false, fogFrom + 0.3);
   }
   const pantry = DOORWAYS.find((d) => d.b === 'pantry')!;
   const pr = doorRect(pantry);
-  add(new THREE.Vector3(pr.x0 - 0.15, 0.1, (pr.z0 + pr.z1) / 2), new THREE.Vector3(-1, 0, 0), false, FOG_FROM + 0.2);
+  add(new THREE.Vector3(pr.x0 - 0.15, 0.1, (pr.z0 + pr.z1) / 2), new THREE.Vector3(-1, 0, 0), false, fogFrom + 0.2);
   const chute = FURNITURE.chute;
-  add(new THREE.Vector3((chute.x0 + chute.x1) / 2, 0.7, chute.z1 + 0.15), new THREE.Vector3(0, 0, 1), true, FOG_FROM + 0.5);
+  add(new THREE.Vector3((chute.x0 + chute.x1) / 2, 0.7, chute.z1 + 0.15), new THREE.Vector3(0, 0, 1), true, fogFrom + 0.5);
   for (const f of Object.values(VESTIBULES)) {
     const a = toWorld(f, 0, 0.4);
     const b = toWorld(f, 6, 8.0);
-    add(new THREE.Vector3(a.x, 0.1, a.z), new THREE.Vector3(f.fx, 0, f.fz), false, FOG_FROM);
-    add(new THREE.Vector3(b.x, 0.1, b.z), new THREE.Vector3(-f.fx, 0, -f.fz), false, FOG_FROM + 0.2);
+    add(new THREE.Vector3(a.x, 0.1, a.z), new THREE.Vector3(f.fx, 0, f.fz), false, fogFrom);
+    add(new THREE.Vector3(b.x, 0.1, b.z), new THREE.Vector3(-f.fx, 0, -f.fz), false, fogFrom + 0.2);
   }
   return list;
 }

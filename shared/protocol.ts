@@ -56,6 +56,8 @@ export type ServerMsg =
       elapsed: number;
       anomalies: { id: string; seed: number; morok?: true }[];
       run?: RunStats;
+      /** In the samosbor phase: it is the big one. */
+      big?: true;
     }
   // c: cycle each position belongs to; positions from another cycle are in the other corridor
   | { t: 'pos'; list: [id: number, x: number, z: number, yaw: number, pitch: number, c: number][] }
@@ -71,6 +73,14 @@ export type ServerMsg =
       morok: { name: string; seenBy: string } | null;
       cycle: number;
       won: boolean;
+      /**
+       * Why the samosbor came without a choice: the group stayed on the floor too long, or the
+       * chaser caught `caught`. Absent for a verdict on a choice.
+       */
+      reason?: 'linger' | 'caught';
+      caught?: string;
+      /** A wrong one that is the second in a row: the big samosbor (SAMOSBOR_BIG). */
+      big?: boolean;
     }
   | { t: 'chat'; id: number; text: string }
   | { t: 'mark'; id: number; x: number; y: number; z: number }

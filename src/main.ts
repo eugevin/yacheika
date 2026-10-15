@@ -3,7 +3,7 @@ import { ANOMALIES } from '../shared/anomalies.ts';
 import { STAIRS, exitAt, loopPose, spawnPoint, stairDepth, tambourAt } from '../shared/map.ts';
 import { MASKS, OUTFITS, isMask, isOutfit, type MaskId, type OutfitId } from '../shared/masks.ts';
 import type { Phase, RunStats, ServerMsg } from '../shared/protocol.ts';
-import { SAMOSBOR } from '../shared/rules.ts';
+import { SAMOSBOR, SAMOSBOR_BIG, SAMOSBOR_BIG_MS, SAMOSBOR_MS } from '../shared/rules.ts';
 import { applyAnomaly, type People } from './anomalies.ts';
 import { Sound } from './audio.ts';
 import { Avatars } from './avatars.ts';
@@ -13,6 +13,7 @@ import { Preview, corkTexture } from './lobby.ts';
 import { Net } from './net.ts';
 import { Post } from './post.ts';
 import { Samosbor, clearSmog } from './samosbor.ts';
+import { Linger } from './linger.ts';
 import { SMOG_SPACE } from './world/smog.ts';
 import { Walker } from './player.ts';
 import { Voice } from './voice.ts';
@@ -170,13 +171,18 @@ let captionTimer = 0;
 let left = false;
 /** The samosbor going on in the shown cell, if any. */
 let samosbor: Samosbor | null = null;
-let warned = false;
+/** Warnings of the samosbor shown so far: one, or two for the big one. */
+let warned = 0;
 /** What went wrong, told once the samosbor is over and the next cell is up. */
 let aftermath: string | null = null;
 /** The final screen came up at the bottom of the stairs; it doesn't come back until the next run. */
 let finalShown = false;
 /** How the run went, from the cell built for the win. */
 let run: RunStats | null = null;
+/** The floor's patience with a group that lingers (linger.ts). */
+const linger = new Linger();
+/** Somebody is past a blast door: the server is counting down (or we are out ourselves). */
+let someoneOut = false;
 /** Dev only: the samosbor stands still (yacheika.samosbor). */
 let samosborHeld = false;
 let bakeMs = 0;
@@ -493,6 +499,7 @@ function handle(msg: ServerMsg) {
       break;
     }
     case 'cycle':
+      if (msg.cycleId !== cycleMsg?.cycleId) someoneOut = false;
       cycleMsg = msg;
       cycleBegan = performance.now() - msg.elapsed;
       // a samosbor keeps the cell: only the phase changes
@@ -508,6 +515,7 @@ function handle(msg: ServerMsg) {
       for (const [id, x, z, yaw, pitch, c] of msg.list) if (id !== myId && c === shownCycleId) avatars.setPos(id, x, z, yaw, pitch);
       break;
     case 'countdown': {
+      someoneOut = true;
       const s = Math.ceil(msg.endsIn / 1000);
       const parts = [`наверх ${msg.forward}`, `вниз ${msg.back}`];
       // the extra resident is still in the cell, on the screens that see it
@@ -519,6 +527,7 @@ function handle(msg: ServerMsg) {
       break;
     }
     case 'countdown_off':
+      someoneOut = false;
       phaseBanner();
       break;
     case 'result': {
@@ -531,8 +540,10 @@ function handle(msg: ServerMsg) {
         const a = msg.anomaly;
         const seen = a?.seenBy ? `, его видел(а) только ${a.seenBy}` : '';
         const clean = msg.morok ? `Отклонений не было, морок видел(а) ${msg.morok.seenBy}` : 'Отклонений не было';
-        aftermath = `${msg.split ? 'Группа разделилась поровну. ' : ''}${a ? `Отклонение: «${a.name}»${seen}` : clean}`;
-        startSamosbor();
+        if (msg.reason === 'linger') aftermath = 'Жильцы задержались на этаже';
+        else if (msg.reason === 'caught') aftermath = `Отклонение: преследователь. Он догнал ${accusative(msg.caught ?? 'жильца')}`;
+        else aftermath = `${msg.split ? 'Группа разделилась поровну. ' : ''}${a ? `Отклонение: «${a.name}»${seen}` : clean}`;
+        startSamosbor(msg.big === true);
       } else if (!tambourAt(walker.x, walker.z)) left = true;
       break;
     }
@@ -553,12 +564,22 @@ function handle(msg: ServerMsg) {
   }
 }
 
-/** A wrong verdict: the samosbor plays over the cell as it is (samosbor.ts), until the server moves on. */
-function startSamosbor() {
+/** A surname as the object of a verb: Петров → Петрова, Петрова → Петрову; anything else as it is. */
+function accusative(name: string) {
+  if (/(ов|ев|ёв|ин|ын)$/i.test(name)) return `${name}а`;
+  if (/(ова|ева|ёва|ина|ына)$/i.test(name)) return `${name.slice(0, -1)}у`;
+  return name;
+}
+
+/**
+ * A mistake: the samosbor plays over the cell as it is (samosbor.ts), until the server moves on.
+ * The second in a row is the big one.
+ */
+function startSamosbor(big = false) {
   if (!world || samosbor) return;
-  samosbor = new Samosbor(world);
-  warned = false;
-  sound?.samosbor();
+  samosbor = new Samosbor(world, big ? SAMOSBOR_BIG : SAMOSBOR);
+  warned = 0;
+  sound?.samosbor(samosbor.times, big ? SAMOSBOR_BIG_MS : SAMOSBOR_MS);
 }
 
 /**
@@ -612,7 +633,7 @@ function enterCycle(msg: Extract<ServerMsg, { t: 'cycle' }>, mode: 'loop' | 'sta
   left = false;
   aftermath = null;
   // joined (or reconnected) in the middle of one
-  if (msg.phase === 'samosbor') startSamosbor();
+  if (msg.phase === 'samosbor') startSamosbor(msg.big === true);
 }
 
 /** At the bottom of the stairs: how the run went, and another go. */
@@ -655,9 +676,9 @@ if (import.meta.env.DEV) {
        * Sets off a samosbor in the shown cell; yacheika.preview() clears it. `at` skips ahead, in
        * seconds; `hold` then stops it there (for snapshots).
        */
-      samosbor(at = 0, hold = false) {
+      samosbor(at = 0, hold = false, big = false) {
         aftermath = 'Отклонений не было';
-        startSamosbor();
+        startSamosbor(big);
         for (let s = 0; s < at; s += 1 / 30) samosbor?.update(1 / 30);
         samosborHeld = hold;
       },
@@ -701,6 +722,10 @@ if (import.meta.env.DEV) {
         if (!avatars.info(-1)) avatars.add({ id: -1, name: 'Призраков', color: '#9a8f7a', mask: 'gauze', outfit: 'quilted', flat: 48 });
         ghostAt = [x, z, yaw, pitch];
         avatars.setPos(-1, ...ghostAt);
+      },
+      /** Moves the clock of the shown cycle to `s` seconds since it began (lingering, linger.ts). */
+      linger(s: number) {
+        cycleBegan = performance.now() - s * 1000;
       },
       where: () => ({ x: walker.x, z: walker.z, yaw: walker.yaw, cycleId: shownCycleId, fade, t: cycleTime() }),
       /** Brightness of the lamps of one room (or of all), 0..1, until the next rebuild. */
@@ -750,11 +775,16 @@ renderer.setAnimationLoop((now) => {
   }
   if (samosbor) {
     samosbor.update(samosborHeld ? 0 : realDt);
-    if (!warned && samosbor.t >= SAMOSBOR.warn) {
-      warned = true;
+    const at = [samosbor.times.warn, samosbor.times.again].filter((w) => w !== null);
+    if (warned < at.length && samosbor.t >= at[warned]) {
+      warned++;
       showMessage('ВНИМАНИЕ! САМОСБОР!', 'Всем жильцам немедленно укрыться в гермоблоках', 'var(--bad)', 6);
     }
   }
+  // lingering: by the server's clock of the shown cycle, only while it is played
+  const lingering = world !== null && shownPhase === 'playing' && cycleMsg?.cycleId === shownCycleId;
+  linger.update(realDt, lingering ? cycleTime() : 0, someoneOut || tambourAt(walker.x, walker.z) !== null, samosbor !== null || !lingering);
+  sound?.distantSiren(linger.siren);
   ui.veil.style.opacity = String(samosbor?.veil ?? 0);
   ui.warp.style.opacity = String(samosbor?.warp ?? 0);
   if (world) {
