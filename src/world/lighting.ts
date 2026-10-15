@@ -349,7 +349,11 @@ export function bakeMesh(mesh: THREE.Mesh, space: Space, lamps: LightSource[], w
   nmat.getNormalMatrix(world);
   const room = new Float32Array(pos.count);
   const vest = space.room(0, 0) === 'vestibule';
-  const where = (p: THREE.Vector3) => (vest ? VEST_ROOM : roomIndex(p.x, p.z));
+  // a mesh wholly inside one room (a wall piece lies on its edge) is that room's; otherwise vertex by vertex
+  geo.computeBoundingBox();
+  const box = geo.boundingBox!.clone().applyMatrix4(world);
+  const whole = vest ? VEST_ROOM : ROOMS.findIndex((r) => box.min.x >= r.rect.x0 - 0.01 && box.max.x <= r.rect.x1 + 0.01 && box.min.z >= r.rect.z0 - 0.01 && box.max.z <= r.rect.z1 + 0.01);
+  const where = (p: THREE.Vector3) => (whole >= 0 ? whole : roomIndex(p.x, p.z));
   const probe: Probe = { base: new THREE.Vector3(), idx: new THREE.Vector4(), w: new THREE.Vector4() };
   // small things (lamp fittings, wires) take one sample for the whole object: their own vertices
   // would cost a third of the bake and show nothing more
@@ -380,7 +384,7 @@ export function bakeMesh(mesh: THREE.Mesh, space: Space, lamps: LightSource[], w
     probe.idx.toArray(idx, i * 4);
     probe.w.toArray(wt, i * 4);
     // a wall's vertex belongs to the room it faces
-    room[i] = where(pw.addScaledVector(nw, 0.05));
+    room[i] = whole >= 0 ? whole : where(pw.addScaledVector(nw, 0.05));
   }
   return { base, idx, w: wt, room };
 }
