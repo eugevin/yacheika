@@ -3,7 +3,7 @@ import { ANOMALIES } from '../shared/anomalies.ts';
 import { STAIRS, exitAt, loopPose, spawnPoint, stairDepth, tambourAt } from '../shared/map.ts';
 import { MASKS, OUTFITS, isMask, isOutfit, type MaskId, type OutfitId } from '../shared/masks.ts';
 import type { Phase, RunStats, ServerMsg } from '../shared/protocol.ts';
-import { SAMOSBOR, SAMOSBOR_BIG, SAMOSBOR_BIG_MS, SAMOSBOR_MS } from '../shared/rules.ts';
+import { DARK_SWITCH, SAMOSBOR, SAMOSBOR_BIG, SAMOSBOR_BIG_MS, SAMOSBOR_MS } from '../shared/rules.ts';
 import { applyAnomaly, type People } from './anomalies.ts';
 import { Sound } from './audio.ts';
 import { Avatars } from './avatars.ts';
@@ -14,6 +14,8 @@ import { Net } from './net.ts';
 import { Post } from './post.ts';
 import { Samosbor, clearSmog } from './samosbor.ts';
 import { Linger } from './linger.ts';
+import { Dynamo, beamsFor, setBeams } from './flashlight.ts';
+import { notice } from './world/pictures.ts';
 import { SMOG_SPACE } from './world/smog.ts';
 import { Walker } from './player.ts';
 import { Voice } from './voice.ts';
@@ -81,6 +83,8 @@ renderer.toneMappingExposure = EXPOSURE;
 document.body.prepend(renderer.domElement);
 // No scene lights: everything is lit by the bake (world/lighting.ts).
 const scene = new THREE.Scene();
+// the flashlights' beams are worked out for whichever camera renders: ours, a mirror's (flashlight.ts)
+scene.onBeforeRender = (_r, _s, cam) => beamsFor(cam);
 scene.background = new THREE.Color(0x0b0a08);
 scene.fog = new THREE.Fog(0x0b0a08, 12, 40);
 // far enough for the yard behind the windows (world/yard.ts)
@@ -183,6 +187,20 @@ let run: RunStats | null = null;
 const linger = new Linger();
 /** Somebody is past a blast door: the server is counting down (or we are out ourselves). */
 let someoneOut = false;
+/** The cycle shown, as the server sent it: its lamps (darkFrom, dark) among other things. */
+let shown: Extract<ServerMsg, { t: 'cycle' }> | null = null;
+/** The lamps of the shown cell are off (a blackout), as last set. */
+let lampsOff = false;
+/** The cycle whose power cut has been announced. */
+let announced = -1;
+/** Our dynamo flashlight, «жучок»: only in the dark. */
+const dynamo = new Dynamo();
+dynamo.onSqueeze = () => sound?.whirr();
+let beam = 0;
+/** Whether the lamps of the shown cycle are off now: as the last cycle ended until DARK_SWITCH, then as this one goes. */
+const darkNow = () => (shown ? (performance.now() - shownBegan < DARK_SWITCH ? shown.darkFrom === true : shown.dark === true) : false);
+/** cycleBegan of the shown cycle: the next one's message may come while this one is still on screen. */
+let shownBegan = 0;
 /** Dev only: the samosbor stands still (yacheika.samosbor). */
 let samosborHeld = false;
 let bakeMs = 0;
@@ -377,11 +395,17 @@ addEventListener('keydown', (e) => {
     ui.chatInput.value = '';
     ui.chatInput.focus();
     e.preventDefault();
+  } else if (e.code === 'KeyF') {
+    if (!e.repeat) dynamo.press(true);
   } else if (e.code === 'KeyE') placeMark();
   else if (e.code === 'KeyM') voice?.toggleMute();
   else if (e.code === 'KeyN') sound?.toggleMute();
   else if (e.code === 'KeyG') toggleQuality();
 });
+addEventListener('keyup', (e) => {
+  if (e.code === 'KeyF') dynamo.press(false);
+});
+addEventListener('blur', () => dynamo.release());
 addEventListener('mousedown', (e) => {
   if (document.pointerLockElement && e.button === 0) placeMark();
 });
@@ -513,7 +537,7 @@ function handle(msg: ServerMsg) {
       renderPause();
       break;
     case 'pos':
-      for (const [id, x, z, yaw, pitch, c] of msg.list) if (id !== myId && c === shownCycleId) avatars.setPos(id, x, z, yaw, pitch);
+      for (const [id, x, z, yaw, pitch, c, b] of msg.list) if (id !== myId && c === shownCycleId) avatars.setPos(id, x, z, yaw, pitch, b);
       break;
     case 'countdown': {
       someoneOut = true;
@@ -578,6 +602,9 @@ function accusative(name: string) {
  */
 function startSamosbor(big = false) {
   if (!world || samosbor) return;
+  // the emergency light comes on over a blackout
+  world.setMains(1);
+  lampsOff = false;
   samosbor = new Samosbor(world, big ? SAMOSBOR_BIG : SAMOSBOR, shownCycleId);
   warned = 0;
   sound?.samosbor(samosbor.times, big ? SAMOSBOR_BIG_MS : SAMOSBOR_MS);
@@ -607,6 +634,17 @@ function enterCycle(msg: Extract<ServerMsg, { t: 'cycle' }>, mode: 'loop' | 'sta
   };
   const changed = msg.anomalies.flatMap((a) => applyAnomaly(world!, a.id, a.seed, msg.cycle, people, a.morok === true));
   world.settle(changed);
+  // the lamps as the last cycle ended; a blackout's notice on the board
+  shown = msg;
+  shownBegan = cycleBegan;
+  lampsOff = darkNow();
+  world.setMains(lampsOff ? 0 : 1);
+  if (msg.dark) {
+    const sheet = world.props.common.schedule.material;
+    sheet.map?.dispose();
+    sheet.map = notice('ОБЪЯВЛЕНИЕ', ['Плановое', 'отключение', 'электроэнергии', 'по всему блоку.', 'Пользуйтесь', 'фонарями.', 'Домком']);
+    sheet.needsUpdate = true;
+  }
   scene.add(world.group);
   // Compile whatever new shaders the cell needs now, in the background where the browser can:
   // compiled on first sight, an anomaly would stall the frame you first look at it.
@@ -668,11 +706,12 @@ if (import.meta.env.DEV) {
       voice: () => voice,
       avatars: () => avatars,
       sound: () => sound,
-      preview(id?: string, cycle = 3, seed = Date.now(), o: { morok?: boolean } = {}) {
+      preview(id?: string, cycle = 3, seed = Date.now(), o: { morok?: boolean; dark?: boolean; darkFrom?: boolean } = {}) {
         const { x, z, yaw, pitch } = walker;
         const anomalies = id ? [{ id, seed, ...(o.morok ? { morok: true as const } : {}) }] : [];
         cycleBegan = performance.now();
-        enterCycle({ t: 'cycle', phase: 'playing', cycle, goal: 10, cycleId: shownCycleId, elapsed: 0, anomalies });
+        const power = { ...(o.dark ? { dark: true as const } : {}), ...(o.darkFrom ? { darkFrom: true as const } : {}) };
+        enterCycle({ t: 'cycle', phase: 'playing', cycle, goal: 10, cycleId: shownCycleId, elapsed: 0, anomalies, ...power });
         Object.assign(walker, { x, z, yaw, pitch });
         // a new cycle hides avatars until their next position, and the ghost gets none from the server
         if (ghostAt) avatars.setPos(-1, ...ghostAt);
@@ -732,7 +771,11 @@ if (import.meta.env.DEV) {
       linger(s: number) {
         cycleBegan = performance.now() - s * 1000;
       },
-      where: () => ({ x: walker.x, z: walker.z, yaw: walker.yaw, cycleId: shownCycleId, fade, t: cycleTime() }),
+      where: () => ({ x: walker.x, z: walker.z, yaw: walker.yaw, cycleId: shownCycleId, fade, t: cycleTime(), dark: lampsOff, beam }),
+      /** Our flashlight's charge, 0..1, as if pumped (a blackout only). */
+      torch(charge = 1) {
+        dynamo.charge = charge;
+      },
       /** Brightness of the lamps of one room (or of all), 0..1, until the next rebuild. */
       lamp(room: string | null, level: number) {
         for (const l of world?.lamps ?? []) if (room === null || l.room === room) l.set(level);
@@ -786,6 +829,26 @@ renderer.setAnimationLoop((now) => {
       showMessage('ВНИМАНИЕ! САМОСБОР!', 'Всем жильцам немедленно укрыться в гермоблоках', 'var(--bad)', 6);
     }
   }
+  // a blackout: the lamps switch everywhere at once, DARK_SWITCH into the cycle, with the breaker's clunk
+  if (world && !samosbor && shown) {
+    const off = darkNow();
+    if (off !== lampsOff) {
+      lampsOff = off;
+      world.setMains(off ? 0 : 1);
+      sound?.breaker(!off);
+    }
+    if (shown.dark && !shown.darkFrom && announced !== shownCycleId && performance.now() - shownBegan < DARK_SWITCH) {
+      announced = shownCycleId;
+      sound?.powerCut();
+      caption('Плановое отключение электроэнергии. Пользуйтесь фонарями (F)', 6);
+    }
+  }
+  beam = dynamo.update(dt, lampsOff && !samosbor);
+  {
+    // ours from the hand, a little right of and below the eyes; then the teammates'
+    const hand = camera.localToWorld(new THREE.Vector3(0.18, -0.28, 0));
+    setBeams([{ x: hand.x, y: hand.y, z: hand.z, yaw: walker.yaw, pitch: walker.pitch, k: beam }, ...avatars.beams()]);
+  }
   // lingering: by the server's clock of the shown cycle, only while it is played
   const lingering = world !== null && shownPhase === 'playing' && cycleMsg?.cycleId === shownCycleId;
   linger.update(realDt, lingering ? cycleTime() : 0, someoneOut || tambourAt(walker.x, walker.z) !== null, samosbor !== null || !lingering);
@@ -812,11 +875,12 @@ renderer.setAnimationLoop((now) => {
   posTimer -= dt;
   if (net && world && posTimer <= 0) {
     posTimer = 1 / POS_HZ;
-    net.send({ t: 'pos', c: shownCycleId, x: walker.x, z: walker.z, yaw: walker.yaw, pitch: walker.pitch });
+    net.send({ t: 'pos', c: shownCycleId, x: walker.x, z: walker.z, yaw: walker.yaw, pitch: walker.pitch, b: Math.round(beam * 255) });
   }
 
   const mic = !voice?.stream ? 'нет' : voice.muted ? 'выкл' : 'вкл';
-  ui.status.textContent = `микрофон: ${mic} (M) · звук: ${sound?.muted ? 'выкл' : 'вкл'} (N)${net?.status === 'offline' ? ' · нет связи' : ''}`;
+  const torch = lampsOff && !samosbor ? ' · жучок (F)' : '';
+  ui.status.textContent = `микрофон: ${mic} (M) · звук: ${sound?.muted ? 'выкл' : 'вкл'} (N)${torch}${net?.status === 'offline' ? ' · нет связи' : ''}`;
 
   renderer.info.reset();
   if (quality === 'high') post.render();

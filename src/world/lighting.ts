@@ -260,6 +260,22 @@ export interface Probe {
   base: THREE.Vector3;
   idx: THREE.Vector4;
   w: THREE.Vector4;
+  /** Which room it stands in (roomIndex), for the flashlights' beams; set by World.probe. */
+  room?: { value: number };
+}
+
+/**
+ * Rooms by number, for the beams (flashlight.ts): the cell's rooms in ROOMS order, then one number
+ * for both vestibules and their stairs (a beam can't reach from one to the other: they are 20 m
+ * apart), -1 for anything outside.
+ */
+export const VEST_ROOM = ROOMS.length;
+const DOOR_ROOMS = DOORWAYS.filter((d) => !d.closed).map((d) => ({ r: doorRect(d), a: ROOMS.findIndex((room) => room.id === d.a) }));
+export function roomIndex(x: number, z: number) {
+  const r = roomAt(x, z);
+  if (r) return ROOMS.indexOf(r);
+  // in a doorway: the room it belongs to
+  return DOOR_ROOMS.find((d) => x >= d.r.x0 && x <= d.r.x1 && z >= d.r.z0 && z <= d.r.z1)?.a ?? -1;
 }
 
 const toL = new THREE.Vector3();
@@ -331,6 +347,9 @@ export function bakeMesh(mesh: THREE.Mesh, space: Space, lamps: LightSource[], w
   // instanced vestibule halves are baked where their first instance stands (tambour.ts)
   const world: THREE.Matrix4 = mesh.userData.bakeMatrix ?? mesh.matrixWorld;
   nmat.getNormalMatrix(world);
+  const room = new Float32Array(pos.count);
+  const vest = space.room(0, 0) === 'vestibule';
+  const where = (p: THREE.Vector3) => (vest ? VEST_ROOM : roomIndex(p.x, p.z));
   const probe: Probe = { base: new THREE.Vector3(), idx: new THREE.Vector4(), w: new THREE.Vector4() };
   // small things (lamp fittings, wires) take one sample for the whole object: their own vertices
   // would cost a third of the bake and show nothing more
@@ -338,12 +357,13 @@ export function bakeMesh(mesh: THREE.Mesh, space: Space, lamps: LightSource[], w
   const sphere = geo.boundingSphere!.clone().applyMatrix4(world);
   if (sphere.radius < SMALL) {
     gather(space, lamps, windows, sphere.center, null, probe);
+    room.fill(where(sphere.center));
     for (let i = 0; i < pos.count; i++) {
       probe.base.toArray(base, i * 3);
       probe.idx.toArray(idx, i * 4);
       probe.w.toArray(wt, i * 4);
     }
-    return { base, idx, w: wt };
+    return { base, idx, w: wt, room };
   }
   for (let i = 0; i < pos.count; i++) {
     nw.fromBufferAttribute(nor, i).applyMatrix3(nmat).normalize();
@@ -359,8 +379,10 @@ export function bakeMesh(mesh: THREE.Mesh, space: Space, lamps: LightSource[], w
     probe.base.toArray(base, i * 3);
     probe.idx.toArray(idx, i * 4);
     probe.w.toArray(wt, i * 4);
+    // a wall's vertex belongs to the room it faces
+    room[i] = where(pw.addScaledVector(nw, 0.05));
   }
-  return { base, idx, w: wt };
+  return { base, idx, w: wt, room };
 }
 
 export type Baked = ReturnType<typeof bakeMesh>;
@@ -369,12 +391,86 @@ export function setBaked(geo: THREE.BufferGeometry, b: Baked) {
   geo.setAttribute('bakeBase', new THREE.BufferAttribute(b.base, 3));
   geo.setAttribute('bakeIdx', new THREE.BufferAttribute(b.idx, 4));
   geo.setAttribute('bakeW', new THREE.BufferAttribute(b.w, 4));
+  geo.setAttribute('bakeRoom', new THREE.BufferAttribute(b.room, 1));
 }
 
 const CHANNEL_SUM = /* glsl */ `
   uniform vec3 uChan[${MAX_CHANNELS}];
   vec3 bakedLight(vec3 base, vec4 idx, vec4 w) {
     return base + w.x * uChan[int(idx.x)] + w.y * uChan[int(idx.y)] + w.z * uChan[int(idx.z)] + w.w * uChan[int(idx.w)];
+  }
+`;
+
+/** How many flashlight beams the shader takes at once: one per player. */
+export const MAX_BEAMS = 6;
+const v3s = () => Array.from({ length: MAX_BEAMS }, () => new THREE.Vector3());
+/**
+ * The flashlights' beams (flashlight.ts), shared by every baked material like CHANNELS: the only
+ * light that isn't baked. All in view space, worked out on the CPU in double precision every frame,
+ * so a beam lights both vestibules' instances the same (the loop). Each lights the room it is in
+ * (by the bakeRoom attribute) and the next room only through the doorway it points through: no
+ * shadow maps, so a beam doesn't go through walls, but furniture casts no shadow.
+ */
+export const BEAMS = {
+  uBeamN: { value: 0 },
+  /** Origin and unit direction. */
+  uBeamPos: { value: v3s() },
+  uBeamDir: { value: v3s() },
+  /** Colour times intensity, candela. */
+  uBeamColor: { value: v3s() },
+  /** The room it is in, and the room past the doorway it points through (-2: none). */
+  uBeamRoom: { value: new Array<number>(MAX_BEAMS).fill(-2) },
+  uBeamNext: { value: new Array<number>(MAX_BEAMS).fill(-2) },
+  /** That doorway: a corner and its two edges. */
+  uDoorO: { value: v3s() },
+  uDoorU: { value: v3s() },
+  uDoorV: { value: v3s() },
+};
+/** cos of the half angles of a beam: the bright middle, and where it fades out. */
+export const BEAM_INNER = Math.cos(0.16);
+export const BEAM_OUTER = Math.cos(0.4);
+/** A beam reaches no further than this, metres; the two vestibules are 20 m apart. */
+export const BEAM_REACH = 9;
+
+const BEAM_LIGHT = /* glsl */ `
+  uniform int uBeamN;
+  uniform vec3 uBeamPos[${MAX_BEAMS}];
+  uniform vec3 uBeamDir[${MAX_BEAMS}];
+  uniform vec3 uBeamColor[${MAX_BEAMS}];
+  uniform float uBeamRoom[${MAX_BEAMS}];
+  uniform float uBeamNext[${MAX_BEAMS}];
+  uniform vec3 uDoorO[${MAX_BEAMS}];
+  uniform vec3 uDoorU[${MAX_BEAMS}];
+  uniform vec3 uDoorV[${MAX_BEAMS}];
+  flat varying float vRoom;
+  vec3 beamLight(vec3 p, vec3 n) {
+    vec3 sum = vec3(0.0);
+    for (int i = 0; i < ${MAX_BEAMS}; i++) {
+      if (i >= uBeamN) break;
+      vec3 d = p - uBeamPos[i];
+      float len = length(d);
+      if (len > ${BEAM_REACH.toFixed(1)} || len < 1e-3) continue;
+      vec3 l = d / len;
+      float cone = smoothstep(${BEAM_OUTER.toFixed(5)}, ${BEAM_INNER.toFixed(5)}, dot(l, uBeamDir[i]));
+      if (cone <= 0.0) continue;
+      float here = abs(vRoom - uBeamRoom[i]) < 0.5 ? 1.0 : 0.0;
+      if (here == 0.0 && abs(vRoom - uBeamNext[i]) < 0.5) {
+        // only what is seen through the doorway: the way to it crosses the doorway's rectangle
+        vec3 nd = cross(uDoorU[i], uDoorV[i]);
+        float den = dot(nd, d);
+        if (abs(den) > 1e-6) {
+          float t = dot(nd, uDoorO[i] - uBeamPos[i]) / den;
+          vec3 x = uBeamPos[i] + d * t - uDoorO[i];
+          float a = dot(x, uDoorU[i]) / dot(uDoorU[i], uDoorU[i]);
+          float b = dot(x, uDoorV[i]) / dot(uDoorV[i], uDoorV[i]);
+          here = t > 0.0 && t < 1.0 && a >= 0.0 && a <= 1.0 && b >= 0.0 && b <= 1.0 ? 1.0 : 0.0;
+        }
+      }
+      float fade = 1.0 - smoothstep(${(BEAM_REACH * 0.65).toFixed(1)}, ${BEAM_REACH.toFixed(1)}, len);
+      // the bulb sits in a reflector: close up the spot spreads instead of burning out
+      sum += uBeamColor[i] * (here * cone * fade * max(dot(n, -l), 0.0) / (len * len + 1.0));
+    }
+    return sum;
   }
 `;
 
@@ -387,21 +483,24 @@ const CHANNEL_SUM = /* glsl */ `
 export function useBaked<M extends THREE.MeshStandardMaterial | THREE.MeshLambertMaterial>(mat: M, probe?: Probe): M {
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uChan = CHANNELS;
+    Object.assign(sh.uniforms, BEAMS);
     if (probe) {
       sh.uniforms.uProbeBase = { value: probe.base };
       sh.uniforms.uProbeIdx = { value: probe.idx };
       sh.uniforms.uProbeW = { value: probe.w };
+      sh.uniforms.uProbeRoom = probe.room ?? { value: -1 };
     }
     const decl = probe
-      ? 'uniform vec3 uProbeBase; uniform vec4 uProbeIdx; uniform vec4 uProbeW;'
-      : 'attribute vec3 bakeBase; attribute vec4 bakeIdx; attribute vec4 bakeW;';
+      ? 'uniform vec3 uProbeBase; uniform vec4 uProbeIdx; uniform vec4 uProbeW; uniform float uProbeRoom;'
+      : 'attribute vec3 bakeBase; attribute vec4 bakeIdx; attribute vec4 bakeW; attribute float bakeRoom;';
     const value = probe ? 'bakedLight(uProbeBase, uProbeIdx, uProbeW)' : 'bakedLight(bakeBase, bakeIdx, bakeW)';
+    const room = probe ? 'uProbeRoom' : 'bakeRoom';
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', `#include <common>\n${CHANNEL_SUM}\n${decl}\nvarying vec3 vBaked;`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvBaked = ${value};`);
+      .replace('#include <common>', `#include <common>\n${CHANNEL_SUM}\n${decl}\nvarying vec3 vBaked;\nflat varying float vRoom;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvBaked = ${value};\nvRoom = ${room};`);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vBaked;')
-      .replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\niblIrradiance = vBaked;');
+      .replace('#include <common>', `#include <common>\nvarying vec3 vBaked;\n${BEAM_LIGHT}`)
+      .replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\niblIrradiance = vBaked + beamLight(-vViewPosition, normal);');
     addSmog(sh);
   };
   mat.customProgramCacheKey = () => (probe ? 'baked-probe' : 'baked');

@@ -29,7 +29,8 @@ export type ClientMsg =
   | { t: 'start' }
   // c: cycle the position belongs to, so a position from the previous cycle can't pick an exit;
   // pitch only tilts the avatar's head
-  | { t: 'pos'; c: number; x: number; z: number; yaw: number; pitch: number }
+  // b: how bright their flashlight shines, 0..255 (0 when it's off)
+  | { t: 'pos'; c: number; x: number; z: number; yaw: number; pitch: number; b?: number }
   | { t: 'chat'; text: string }
   | { t: 'mark'; x: number; y: number; z: number }
   | { t: 'rtc'; to: number; data: RtcSignal }
@@ -60,9 +61,15 @@ export type ServerMsg =
       run?: RunStats;
       /** In the samosbor phase: it is the big one. */
       big?: true;
+      /**
+       * The lamps: dark at the start (`darkFrom`, as the last cycle ended) and dark after DARK_SWITCH
+       * (`dark`, a blackout). Both absent in an ordinary lit cycle.
+       */
+      darkFrom?: true;
+      dark?: true;
     }
   // c: cycle each position belongs to; positions from another cycle are in the other corridor
-  | { t: 'pos'; list: [id: number, x: number, z: number, yaw: number, pitch: number, c: number][] }
+  | { t: 'pos'; list: [id: number, x: number, z: number, yaw: number, pitch: number, c: number, b: number][] }
   | { t: 'countdown'; endsIn: number; forward: number; back: number; inside: number }
   | { t: 'countdown_off' }
   | {

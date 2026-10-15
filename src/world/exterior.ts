@@ -178,8 +178,13 @@ export function buildExterior(parent: THREE.Object3D) {
 
 /** Every other flat of our own house goes dark too (an anomaly). */
 export function darkenWindows(parent: THREE.Object3D) {
+  windowsGlow(parent, 0);
+}
+
+/** How lit the other storeys' windows are, 0..1: off in a blackout, which is our building's alone. */
+export function windowsGlow(parent: THREE.Object3D, k: number) {
   const m = parent.getObjectByName('other-windows') as THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
-  m.material.uniforms.glow.value = 0;
+  m.material.uniforms.glow.value = WINDOW_GLOW * k;
 }
 
 /**

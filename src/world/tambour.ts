@@ -107,8 +107,12 @@ export function buildTambours(
     get level() {
       return lamp.level;
     },
+    get lit() {
+      return lamp.lit;
+    },
     set: (l: number) => lamp.set(l),
     tint: (c: THREE.ColorRepresentation) => lamp.tint(c),
+    mains: (k: number) => lamp.mains(k),
   }));
   return { lamps, follow: (camera) => follow(meshes, camera), deadEnds: meshes.filter((m) => m.userData.deadEnd) };
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { roomAt, type RoomId } from '../../shared/map.ts';
+import { beamsFor } from '../flashlight.ts';
 import { LAYERS } from './layers.ts';
 
 /**
@@ -36,7 +37,11 @@ export function realMirror(w: number, h: number, view: number, from: RoomId[], e
   reflector.onBeforeRender = (renderer, scene, camera, ...rest) => {
     camera.getWorldPosition(here);
     room = roomAt(here.x, here.z)?.id ?? room;
-    if (room && from.includes(room)) render(renderer, scene, camera, ...rest);
+    if (room && from.includes(room)) {
+      render(renderer, scene, camera, ...rest);
+      // the reflection set the beams for its own camera: back to the one this frame renders with
+      beamsFor(camera);
+    }
   };
   // not part of the room's environment map, and seen by the main camera only: one mirror in another's
   // view would render inside its render

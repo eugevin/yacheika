@@ -30,6 +30,8 @@ export interface AnomalyInfo {
    * a witness who has heard someone (the 'heard' message). Always private.
    */
   mimic?: true;
+  /** Made of the cell's own light: left out of blackout cycles, where the lamps are off anyway. */
+  light?: true;
 }
 
 export const ANOMALIES: AnomalyInfo[] = [
@@ -39,7 +41,7 @@ export const ANOMALIES: AnomalyInfo[] = [
   { id: 'neighbour_ajar', name: 'Дверь соседей приоткрыта', tier: 2, morok: 'sight' },
   { id: 'notice_other', name: 'Другое объявление', tier: 2, morok: 'sight' },
   { id: 'chute_hum', name: 'Гудит мусоропровод', tier: 2, morok: 'sound' },
-  { id: 'lamp_broken', name: 'Разбита лампочка', tier: 1 },
+  { id: 'lamp_broken', name: 'Разбита лампочка', tier: 1, light: true },
   { id: 'mailbox_open', name: 'Почтовый ящик открыт', tier: 3, morok: 'sight' },
   // hall and pantry
   { id: 'slippers_extra', name: 'Лишние тапочки', tier: 2, morok: 'sight' },
@@ -79,9 +81,9 @@ export const ANOMALIES: AnomalyInfo[] = [
   { id: 'cot_rocking', name: 'Кроватка качается', tier: 1, morok: 'sight' },
   { id: 'jars_extra', name: 'Банки на лоджии', tier: 3, morok: 'sight' },
   // light
-  { id: 'light_off', name: 'Свет не горит', tier: 1 },
-  { id: 'lamp_flicker', name: 'Мигает лампа', tier: 2 },
-  { id: 'light_wrong', name: 'Не тот свет', tier: 3 },
+  { id: 'light_off', name: 'Свет не горит', tier: 1, light: true },
+  { id: 'lamp_flicker', name: 'Мигает лампа', tier: 2, light: true },
+  { id: 'light_wrong', name: 'Не тот свет', tier: 3, light: true },
   // windows
   { id: 'window_watcher', name: 'Кто-то в окне напротив', tier: 2, morok: 'sight' },
   { id: 'windows_dark', name: 'Все окна погасли', tier: 1 },

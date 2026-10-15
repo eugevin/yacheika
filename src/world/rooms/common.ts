@@ -26,6 +26,8 @@ export interface CommonProps {
   notice: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
   /** Hatch of the rubbish chute. */
   chuteHatch: THREE.Mesh;
+  /** The second sheet on the board, the duty roster; a blackout's notice goes over it. */
+  schedule: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
 }
 
 /** The landing and the floor corridor (docs/DESIGN.md, 3.2). */
@@ -112,5 +114,5 @@ export function furnishCommon(root: THREE.Object3D): CommonProps {
   side.rotation.z = -0.03;
   board.add(side);
 
-  return { mailboxes: mail.g, neighbourDoors, notice: main, chuteHatch: hatch };
+  return { mailboxes: mail.g, neighbourDoors, notice: main, chuteHatch: hatch, schedule: side };
 }

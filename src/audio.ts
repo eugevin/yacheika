@@ -209,7 +209,7 @@ export class Sound {
     this.lampVoices = world.lamps.map((lamp, i) => {
       const s = LAMP_SOUND[lamp.style];
       // starts at the lamp's level: vestibule lamps carry on across the loop without a dip
-      const gain = this.gain(lamp.level);
+      const gain = this.gain(lamp.lit);
       const panner = this.panner('linear', 0.8, BUZZ_RANGE, 'equalpower');
       place(panner, lamp.pos);
       const wall = this.wall(lamp.room);
@@ -249,7 +249,7 @@ export class Sound {
     if (!w) return;
     this.cell.gain.setTargetAtTime(w.silent ? 0 : 1, t, 0.05);
     for (const v of this.lampVoices) {
-      v.gain.gain.setTargetAtTime(v.lamp.level, t, 0.015);
+      v.gain.gain.setTargetAtTime(v.lamp.lit, t, 0.015);
       if (moved) this.muffle(v.wall, t);
     }
     const running = this.ctx.state === 'running';
@@ -390,6 +390,47 @@ export class Sound {
       p.connect(this.master);
       this.squelch(at, 0.5 + r() * 0.5, 90 + r() * 70, p);
     }
+  }
+
+  /**
+   * The breaker in the stairwell when the power goes off or comes back (a blackout): a heavy clunk,
+   * and the lamps' hum dies or rises with them by itself. The same everywhere, the vestibules too.
+   */
+  breaker(on: boolean) {
+    const t = this.ctx.currentTime + 0.02;
+    const out = this.gain(1);
+    out.connect(this.filter('lowpass', 1400, 0.7)).connect(this.master);
+    this.thump(t, on ? 70 : 58, 0.18, 0.09, out);
+    this.burst(t, 0.06, 0.05, 700, 1.2, 'bandpass', out, 0.002, null);
+    // the relay's second, smaller clack
+    this.thump(t + 0.07, 140, 0.04, 0.025, out);
+  }
+
+  /** «Плановое отключение электроэнергии» over the building's loudspeakers, everywhere, like the samosbor's warning. */
+  powerCut() {
+    const t = this.ctx.currentTime + 0.2;
+    for (const [i, f] of [523.25, 392].entries()) this.chime(t + i * 0.5, f, 0.03);
+    const speaker = this.gain(SPEAKER_GAIN);
+    speaker.connect(this.filter('highpass', 300, 0.7)).connect(this.filter('lowpass', 1600, 0.7)).connect(this.master);
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    const words = ['плановое', 'отключение', 'электроэнергии'];
+    this.announce(t + 1.3, words, speaker, 'Плановое отключение электроэнергии.', 0.16, 0.9, 0.5);
+  }
+
+  /** One squeeze of the dynamo flashlight's handle: the gears whirr up and click. Ours, like footsteps. */
+  whirr() {
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(110, t);
+    o.frequency.exponentialRampToValueAtTime(330, t + 0.12);
+    o.frequency.exponentialRampToValueAtTime(190, t + 0.3);
+    const g = envelope(ctx, t, 0.02, 0.22, 0.012, 0.08);
+    o.connect(this.filter('bandpass', 700, 1.2)).connect(this.filter('lowpass', 1600, 0.7)).connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.45);
+    this.burst(t, 0.015, 0.012, 1400, 3, 'bandpass', this.master, 0.002, null);
   }
 
   /**

@@ -21,17 +21,19 @@ import { FURNITURE, type Piece } from '../../shared/furniture.ts';
 import type { Look } from '../character.ts';
 import type { Eye } from '../gaze.ts';
 import { canvasTexture, signTexture } from '../textures.ts';
-import { buildExterior, galleryMaterial } from './exterior.ts';
+import { buildExterior, galleryMaterial, windowsGlow } from './exterior.ts';
 import { bakedMaterial, type Spec } from './furniture.ts';
 import { mount, quad } from './geometry.ts';
 import { fittings, makeLamp, type Lamp, type LampSpec } from './lamps.ts';
 import {
   CHANNELS,
   DAYLIGHT,
+  VEST_ROOM,
   bakeMesh,
   cellSpace,
   gather,
   kelvin,
+  roomIndex,
   setBaked,
   useBaked,
   vestibuleSpace,
@@ -169,6 +171,11 @@ export interface World {
    */
   clear(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean;
   /**
+   * Power in the building, 0..1 (a blackout): every lamp, the reflections captured with the lamps
+   * on (env.ts), the lit windows of the other storeys. The street and the other blocks stay lit.
+   */
+  setMains(k: number): void;
+  /**
    * Called once the cycle's anomaly is applied, with what it changed: whatever it left alone joins
    * the cell's own meshes, to save draw calls (settle). Nothing kept apart can be moved after this.
    */
@@ -202,6 +209,8 @@ const LAMPS: (Omit<LampSpec, 'ceiling'> & { room: RoomId })[] = [
 const SCONCE_NEAR = 0.9;
 /** Night behind every window: the murk, lit from below by the street lamps. Radiance, linear. */
 const NIGHT_RADIANCE = 0.12;
+/** In a blackout the window light counts this much more, as eyes adjust (set by measurement, AGENTS.md). */
+const DARK_EYES = 2.5;
 
 /** What a surface is made of (docs/DESIGN.md, 3.1): a procedural surface, or a plain colour. */
 interface Finish {
@@ -362,6 +371,7 @@ export function buildWorld(cycle: number, players: number, won = false): World {
   });
   const mirrors = [props.hall.mirror.reflector, props.bath.reflector, props.bedroom.reflector];
   const built = snapshot(group);
+  let reflective: THREE.MeshStandardMaterial[] | null = null;
   const light = lightContext(lamps, stairLamps);
   const chest = new THREE.Vector3();
 
@@ -387,10 +397,21 @@ export function buildWorld(cycle: number, players: number, won = false): World {
       chest.set(x, 1.2, z);
       const v = [...light.flights, ...light.vest].find((v) => v.space.open(x, 1.2 + stairDepth(x, z), z));
       chest.y += stairDepth(x, z);
+      if (out.room) out.room.value = v ? VEST_ROOM : roomIndex(x, z);
       return v ? gather(v.space, v.lamps, [], chest, null, out) : gather(light.cell, light.cellLamps, light.windows, chest, null, out);
     },
     clear: (ax, ay, az, bx, by, bz) => light.cell.open(ax, ay, az) && light.cell.clear(ax, ay, az, bx, by, bz),
     settle: (changed) => settle(group, built, changed),
+    setMains(k) {
+      for (const l of lamps) l.mains(k);
+      // in the dark the eyes adjust: what little comes in through the windows counts for more
+      CHANNELS.value[DAYLIGHT].set(daylight.r, daylight.g, daylight.b).multiplyScalar(1 + DARK_EYES * (1 - k));
+      reflective ??= roomMaterials(group);
+      for (const m of reflective) m.envMapIntensity = k;
+      const ext = group.getObjectByName('exterior');
+      // "all windows dark" keeps them dark
+      if (ext && this.anomaly !== 'windows_dark') windowsGlow(ext, k);
+    },
     setQuality(high) {
       for (const r of mirrors) r.visible = high;
       const m = props.hall.mirror;
@@ -698,4 +719,15 @@ export function swingLeaf(d: Doorway, leaf: THREE.Object3D, shut: number) {
 function doorSideAxis(d: Doorway) {
   const p = leafPose(d);
   return p.dx !== 0 ? { x: 0, z: 1 } : { x: 1, z: 0 };
+}
+
+/** Materials that take a room's reflections (env.ts). */
+function roomMaterials(group: THREE.Group) {
+  const out = new Set<THREE.MeshStandardMaterial>();
+  group.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    const m = o.material as THREE.MeshStandardMaterial;
+    if (m.isMeshStandardMaterial && m.userData.room) out.add(m);
+  });
+  return [...out];
 }

@@ -5,6 +5,9 @@ import type { ClientMsg, Phase, PlayerInfo, RtcSignal, RunStats, ServerMsg } fro
 import {
   ANOMALY_CHANCE,
   COUNTDOWN_MS,
+  DARK_CHANCE,
+  DARK_FROM,
+  DARK_SWITCH,
   SETTLE_MS,
   GOAL,
   LINGER,
@@ -60,6 +63,8 @@ export interface Player extends PlayerInfo {
   z: number;
   yaw: number;
   pitch: number;
+  /** How bright their flashlight shines, 0..255. */
+  beam: number;
   /** Cycle the last reported position belongs to; -1 until the player reports one. */
   posCycle: number;
   /**
@@ -108,6 +113,9 @@ export class Room {
   private mistakes = 0;
   /** The samosbor going on is the big one. */
   private big = false;
+  /** This cycle is a blackout; the lamps were off when the last one ended. */
+  private dark = false;
+  private darkFrom = false;
   private run: RunStats | null = null;
   private ticks = 0;
   /** Time of the last tick (tests pass their own clock), and when the current cycle began by it. */
@@ -126,7 +134,7 @@ export class Room {
     const others = [...this.players.values()];
     const color = COLORS.find((c) => !others.some((p) => p.color === c)) ?? rand(COLORS);
     const flat = FLATS.find((f) => !others.some((p) => p.flat === f)) ?? rand(FLATS);
-    const p: Player = { id: this.nextId++, name, color, mask, outfit, flat, send, x: 0, z: 0, yaw: 0, pitch: 0, posCycle: -1, entered: false, any: anyMsg(), loud: loudMsg(), heard: new Set() };
+    const p: Player = { id: this.nextId++, name, color, mask, outfit, flat, send, x: 0, z: 0, yaw: 0, pitch: 0, beam: 0, posCycle: -1, entered: false, any: anyMsg(), loud: loudMsg(), heard: new Set() };
     const ice = iceServers(`${this.code}-${p.id}`);
     send({ t: 'hello', id: p.id, code: this.code, color, flat, players: others.map(info), ice });
     this.broadcast({ t: 'joined', player: info(p) });
@@ -152,6 +160,7 @@ export class Room {
         p.z = msg.z;
         p.yaw = msg.yaw;
         p.pitch = msg.pitch;
+        p.beam = Number.isInteger(msg.b) && msg.b! >= 0 && msg.b! <= 255 ? msg.b! : 0;
         p.posCycle = msg.c;
         if (msg.c === this.cycleId && inCell(msg.x, msg.z)) p.entered = true;
         break;
@@ -182,9 +191,9 @@ export class Room {
   tick(now = Date.now()) {
     this.clock = now;
     if (++this.ticks % POS_EVERY === 0 && this.players.size > 1) {
-      const list: [number, number, number, number, number, number][] = [];
+      const list: [number, number, number, number, number, number, number][] = [];
       for (const p of this.players.values())
-        if (p.posCycle >= 0) list.push([p.id, round(p.x), round(p.z), round(p.yaw), round(p.pitch), p.posCycle]);
+        if (p.posCycle >= 0) list.push([p.id, round(p.x), round(p.z), round(p.yaw), round(p.pitch), p.posCycle, p.beam]);
       this.broadcast({ t: 'pos', list });
     }
 
@@ -247,6 +256,9 @@ export class Room {
 
   /** The first cycle of a run is always clean, so everyone sees what "normal" looks like. */
   private newCycle(first: boolean) {
+    // after a samosbor (or a fresh start) the cycle comes behind a fade, lit
+    this.darkFrom = this.phase === 'playing' && this.lampsOff();
+    this.dark = !first && !this.darkFrom && this.cycle >= DARK_FROM && Math.random() < DARK_CHANCE;
     this.phase = 'playing';
     this.cycleId++;
     this.cycleStart = this.clock;
@@ -262,7 +274,9 @@ export class Room {
     if (Math.random() >= ANOMALY_CHANCE) return null;
     const tier = maxDifficulty(this.cycle);
     const ids = [...this.players.keys()];
-    const pool = ANOMALIES.filter((a) => a.tier <= tier && (a.players ?? 1) <= ids.length && !this.recent.includes(a.id) && this.witnesses(a).length);
+    const pool = ANOMALIES.filter(
+      (a) => a.tier <= tier && (a.players ?? 1) <= ids.length && !this.recent.includes(a.id) && this.witnesses(a).length && !(a.light && this.dark),
+    );
     if (pool.length === 0) return null;
     const a = rand(pool);
     this.recent = [...this.recent, a.id].slice(-RECENT_LIMIT);
@@ -321,6 +335,10 @@ export class Room {
       return;
     }
     this.run = { ms: now - (this.startedAt ?? now), samosbors: this.samosbors, moroks: this.moroks };
+    // the way out is built around whoever stands in the zone: its lamps start as these ended, and come on
+    this.darkFrom = this.lampsOff();
+    this.dark = false;
+    this.cycleStart = now;
     this.phase = 'won';
     this.cycleId++;
     this.countdownEnd = null;
@@ -328,6 +346,14 @@ export class Room {
     this.anomaly = null;
     this.morok = null;
     this.sendCycle();
+  }
+
+  /**
+   * Whether the lamps are off now: off after the switch in a blackout (a group can be out before
+   * it), off before it in a cycle that started dark. The next cycle starts as this one ends.
+   */
+  private lampsOff() {
+    return this.clock - this.cycleStart >= DARK_SWITCH ? this.dark : this.darkFrom;
   }
 
   /** What the cycle held, told once it is decided: the anomaly and who alone saw it, or the morok. */
@@ -390,6 +416,8 @@ export class Room {
       anomalies: visible ? [{ id: a.id, seed: a.seed }] : m ? [{ id: m.id, seed: m.seed, morok: true }] : [],
       ...(this.phase === 'won' && this.run ? { run: this.run } : {}),
       ...(this.phase === 'samosbor' && this.big ? { big: true as const } : {}),
+      ...(this.phase !== 'samosbor' && this.darkFrom ? { darkFrom: true as const } : {}),
+      ...(this.phase === 'playing' && this.dark ? { dark: true as const } : {}),
     };
   }
 

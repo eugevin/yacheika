@@ -37,10 +37,14 @@ export interface Lamp {
   room: RoomId | null;
   /** Baked light channel this lamp drives (lighting.ts). */
   channel: number;
-  /** Brightness 0..1; the lamp's buzz follows it. */
+  /** Brightness 0..1, as anomalies and the samosbor set it. */
   readonly level: number;
+  /** What it gives now: its level times the power in the building (mains); the lamp's buzz follows it. */
+  readonly lit: number;
   set(level: number): void;
   tint(color: THREE.ColorRepresentation): void;
+  /** Power in the building, 0..1 (a blackout): on top of the level, so neither undoes the other. */
+  mains(k: number): void;
 }
 
 /** Materials of lamp fittings, shared by all lamps of a world so they merge into a few meshes. */
@@ -147,9 +151,10 @@ export function makeLamp(parent: THREE.Object3D, spec: LampSpec, room: RoomId | 
   if (spec.green) base.g *= 1 + spec.green;
   let color = base.clone();
   let level = 1;
+  let power = 1;
   const apply = () => {
-    glass.color.copy(color).multiplyScalar(0.02 + glow * level);
-    CHANNELS.value[channel].set(color.r, color.g, color.b).multiplyScalar(spec.power * level);
+    glass.color.copy(color).multiplyScalar(0.02 + glow * level * power);
+    CHANNELS.value[channel].set(color.r, color.g, color.b).multiplyScalar(spec.power * level * power);
   };
   apply();
   return {
@@ -163,8 +168,15 @@ export function makeLamp(parent: THREE.Object3D, spec: LampSpec, room: RoomId | 
     get level() {
       return level;
     },
+    get lit() {
+      return level * power;
+    },
     set(l) {
       level = l;
+      apply();
+    },
+    mains(k) {
+      power = k;
       apply();
     },
     tint(c) {

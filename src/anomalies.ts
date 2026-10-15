@@ -46,7 +46,7 @@ const worldAt = (o: THREE.Object3D, x = 0, y = 0, z = 0) => o.localToWorld(V(x, 
 
 /** A material for something an anomaly adds: lit as a whole by the baked light over (x, z) (lighting.ts, useBaked). */
 function lit(w: World, at: { x: number; z: number }, params: THREE.MeshStandardMaterialParameters) {
-  const probe: Probe = { base: V(), idx: new THREE.Vector4(), w: new THREE.Vector4() };
+  const probe: Probe = { base: V(), idx: new THREE.Vector4(), w: new THREE.Vector4(), room: { value: -1 } };
   w.probe(at.x, at.z, probe);
   return useBaked(new THREE.MeshStandardMaterial(params), probe);
 }

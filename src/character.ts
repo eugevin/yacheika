@@ -410,7 +410,7 @@ function paintFace(g: CanvasRenderingContext2D, mask: MaskId, glow: boolean, bla
 export class Character {
   readonly root = new THREE.Group();
   /** Light where the character stands; set it from World.probe as it moves. */
-  readonly probe: Probe = { base: new THREE.Vector3(0.3, 0.3, 0.3), idx: new THREE.Vector4(), w: new THREE.Vector4() };
+  readonly probe: Probe = { base: new THREE.Vector3(0.3, 0.3, 0.3), idx: new THREE.Vector4(), w: new THREE.Vector4(), room: { value: -1 } };
   private readonly bones: THREE.Bone[];
   private readonly mat: THREE.MeshLambertMaterial;
   private readonly mesh: THREE.SkinnedMesh;

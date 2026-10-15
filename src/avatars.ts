@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EYE_H, exitAt, loopPose, stairDepth } from '../shared/map.ts';
 import type { PlayerInfo } from '../shared/protocol.ts';
 import { Character } from './character.ts';
+import type { Beam } from './flashlight.ts';
 import type { Eye } from './gaze.ts';
 import { STEP_LEN } from './player.ts';
 import { shimmer } from './morok.ts';
@@ -28,6 +29,8 @@ interface Avatar {
   seen: boolean;
   /** Distance walked since the last footstep. */
   stride: number;
+  /** How bright their flashlight shines, 0..1. */
+  beam: number;
 }
 
 /** Other players as residents in their gear, smoothed between position updates. */
@@ -47,7 +50,7 @@ export class Avatars {
     const char = new Character(info);
     char.root.visible = false;
     this.root.add(char.root);
-    this.list.set(info.id, { info, own: char, char, target: new THREE.Vector3(), yaw: 0, pitch: 0, talk: 0, seen: false, stride: 0 });
+    this.list.set(info.id, { info, own: char, char, target: new THREE.Vector3(), yaw: 0, pitch: 0, talk: 0, seen: false, stride: 0, beam: 0 });
   }
 
   remove(id: number) {
@@ -76,12 +79,13 @@ export class Avatars {
     return this.stranger && { id: 0, ...this.stranger.look };
   }
 
-  setPos(id: number, x: number, z: number, yaw: number, pitch: number) {
+  setPos(id: number, x: number, z: number, yaw: number, pitch: number, beam = 0) {
     const a = this.list.get(id);
     if (!a) return;
     a.target.set(x, stairDepth(x, z), z);
     a.yaw = yaw;
     a.pitch = pitch;
+    a.beam = beam / 255;
     if (!a.seen) {
       a.char.root.position.copy(a.target);
       a.seen = a.char.root.visible = true;
@@ -151,6 +155,17 @@ export class Avatars {
       const p = a.char.root.position;
       // where they really look, not where the smoothed body has turned to yet
       list.push({ x: p.x, y: p.y + EYE_H, z: p.z, yaw: a.yaw, pitch: a.pitch });
+    }
+    return list;
+  }
+
+  /** Teammates' flashlights, from their hands at about chest height, where they look (flashlight.ts). */
+  beams(): Beam[] {
+    const list: Beam[] = [];
+    for (const a of this.list.values()) {
+      if (!a.char.root.visible || a.beam <= 0) continue;
+      const p = a.char.root.position;
+      list.push({ x: p.x, y: p.y + EYE_H - 0.3, z: p.z, yaw: a.yaw, pitch: a.pitch, k: a.beam });
     }
     return list;
   }

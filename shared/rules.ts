@@ -42,6 +42,15 @@ export const LINGER = { siren: 90_000, fog: 110_000, samosbor: 150_000 };
  */
 export const ALONE_M = 5;
 
+/**
+ * Blackout cycles (docs/DESIGN.md): from this floor, about one cycle in DARK_CHANCE, never twice in
+ * a row, the power goes off in the whole building. Lights change DARK_SWITCH ms after a cycle
+ * begins, everywhere at once: a cycle starts with the lamps as the last one ended (the loop).
+ */
+export const DARK_FROM = 4;
+export const DARK_CHANCE = 1 / 6;
+export const DARK_SWITCH = 4000;
+
 /** Hardest anomaly tier allowed at a given streak. */
 export function maxDifficulty(cycle: number) {
   return cycle < 2 ? 1 : cycle < 5 ? 2 : 3;
