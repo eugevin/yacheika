@@ -2,6 +2,14 @@
 
 What each released version brought. Planned work is in `docs/ROADMAP.md`, the game as it is in `docs/DESIGN.md`.
 
+## 0.3.0 — 2026-10-15 "Morok"
+
+Distrust: of what you see yourself, and of your teammates.
+
+- **Morok.** From floor 3, with two players or more, a clean cycle may show one player an anomaly that isn't there. Forward is still right; turning back is a samosbor, told afterwards with who saw the morok. Its tell: a seen morok shimmers like air over a stove, stronger when looked at straight, and makes no sound and no light; a heard one is dry, without the room's echo, and a wall makes it quieter but not duller. A morok only adds or changes, never takes away, and is never made of light. Only the witness's client knows; the memo hints at it, the end report counts «Поддались мороку».
+- **Five anomalies in the group**, 58 in all, for two players or more: «Смотрит на тебя» (on one screen a teammate's head keeps turning to you), «Без лица» (a resident with no face or other gear, seen by everyone but them), «Лишний» (a resident from flat 49 follows the group and is counted in the countdown and the duty log), «Не смотри» (a figure up the corridor or an armchair moves while nobody looks), «Только вдвоём» (seen only while two people look at it at once).
+- **Under the hood:** the catalogue says how many players an anomaly needs and whether it can be private or a morok; anomalies can turn teammates' heads or dress them differently for a cycle; who sees what is checked against the bake's grid of walls and furniture (`src/gaze.ts`); `yacheika.ghost()` puts a stand-in teammate in the cell for development.
+
 ## 0.2.0 — 2026-10-15 "Tambour"
 
 Fixes from the first playtest, where nobody understood that you have to stop in the middle of the tambour.
