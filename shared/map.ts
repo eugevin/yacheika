@@ -437,13 +437,18 @@ function solidOf(floor: Rect[]): Rect[] {
 let solidCell: Rect[] | null = null;
 let solidWon: Rect[] | null = null;
 
+/** Everything that isn't floor as rectangles (walls, the world around), with the stairs open or not. */
+export function walls(stairs = false) {
+  return stairs ? (solidWon ??= solidOf([...WALKABLE, ...STAIR_RECTS])) : (solidCell ??= solidOf(WALKABLE));
+}
+
 /**
  * A player circle fits if it overlaps no wall, furniture or open leaf; the stairs count as floor
  * once they are open. Exact, not sampled: between a few points on the rim a door jamb or a 4.5 cm
  * leaf would slip in and catch the player.
  */
 export function canStand(x: number, z: number, r = PLAYER_R, stairs = false) {
-  const solid = stairs ? (solidWon ??= solidOf([...WALKABLE, ...STAIR_RECTS])) : (solidCell ??= solidOf(WALKABLE));
+  const solid = walls(stairs);
   const r2 = r * r;
   return !solid.some((b) => dist2(b, x, z) < r2) && !BLOCKERS.some((b) => dist2(b, x, z) < r2);
 }

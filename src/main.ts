@@ -155,6 +155,10 @@ let voice: Voice | null = null;
 let myId = 0;
 let world: World | null = null;
 let cycleMsg: Extract<ServerMsg, { t: 'cycle' }> | null = null;
+/** performance.now() when the server's current cycle began (its `elapsed`), for every timed rule of a cycle. */
+let cycleBegan = performance.now();
+/** Seconds since the server's current cycle began. */
+const cycleTime = () => (performance.now() - cycleBegan) / 1000;
 let shownCycleId = -1;
 let shownPhase: Phase | null = null;
 let fade = 1;
@@ -490,6 +494,7 @@ function handle(msg: ServerMsg) {
     }
     case 'cycle':
       cycleMsg = msg;
+      cycleBegan = performance.now() - msg.elapsed;
       // a samosbor keeps the cell: only the phase changes
       if (msg.cycleId === shownCycleId) shownPhase = msg.phase;
       if (msg.phase !== 'won') {
@@ -640,7 +645,8 @@ if (import.meta.env.DEV) {
       preview(id?: string, cycle = 3, seed = Date.now(), o: { morok?: boolean } = {}) {
         const { x, z, yaw, pitch } = walker;
         const anomalies = id ? [{ id, seed, ...(o.morok ? { morok: true as const } : {}) }] : [];
-        enterCycle({ t: 'cycle', phase: 'playing', cycle, goal: 10, cycleId: shownCycleId, anomalies });
+        cycleBegan = performance.now();
+        enterCycle({ t: 'cycle', phase: 'playing', cycle, goal: 10, cycleId: shownCycleId, elapsed: 0, anomalies });
         Object.assign(walker, { x, z, yaw, pitch });
         // a new cycle hides avatars until their next position, and the ghost gets none from the server
         if (ghostAt) avatars.setPos(-1, ...ghostAt);
@@ -658,7 +664,7 @@ if (import.meta.env.DEV) {
       /** The cell after the last floor, around where you stand, as if the group had just won. */
       win(samosbors = 2, moroks = 1) {
         enterCycle(
-          { t: 'cycle', phase: 'won', cycle: 10, goal: 10, cycleId: shownCycleId, anomalies: [], run: { ms: 754_000, samosbors, moroks } },
+          { t: 'cycle', phase: 'won', cycle: 10, goal: 10, cycleId: shownCycleId, elapsed: 0, anomalies: [], run: { ms: 754_000, samosbors, moroks } },
           'stay',
         );
       },
@@ -696,7 +702,7 @@ if (import.meta.env.DEV) {
         ghostAt = [x, z, yaw, pitch];
         avatars.setPos(-1, ...ghostAt);
       },
-      where: () => ({ x: walker.x, z: walker.z, yaw: walker.yaw, cycleId: shownCycleId, fade }),
+      where: () => ({ x: walker.x, z: walker.z, yaw: walker.yaw, cycleId: shownCycleId, fade, t: cycleTime() }),
       /** Brightness of the lamps of one room (or of all), 0..1, until the next rebuild. */
       lamp(room: string | null, level: number) {
         for (const l of world?.lamps ?? []) if (room === null || l.room === room) l.set(level);

@@ -102,6 +102,9 @@ export class Room {
   private moroks = 0;
   private run: RunStats | null = null;
   private ticks = 0;
+  /** Time of the last tick (tests pass their own clock), and when the current cycle began by it. */
+  private clock = Date.now();
+  private cycleStart = this.clock;
 
   constructor(code: string) {
     this.code = code;
@@ -165,6 +168,7 @@ export class Room {
   }
 
   tick(now = Date.now()) {
+    this.clock = now;
     if (++this.ticks % POS_EVERY === 0 && this.players.size > 1) {
       const list: [number, number, number, number, number, number][] = [];
       for (const p of this.players.values())
@@ -227,6 +231,7 @@ export class Room {
   private newCycle(first: boolean) {
     this.phase = 'playing';
     this.cycleId++;
+    this.cycleStart = this.clock;
     this.countdownEnd = null;
     this.settleEnd = null;
     this.anomaly = first ? null : this.roll();
@@ -329,6 +334,7 @@ export class Room {
       cycle: this.cycle,
       goal: GOAL,
       cycleId: this.cycleId,
+      elapsed: Math.max(0, this.clock - this.cycleStart),
       anomalies: visible ? [{ id: a.id, seed: a.seed }] : m ? [{ id: m.id, seed: m.seed, morok: true }] : [],
       ...(this.phase === 'won' && this.run ? { run: this.run } : {}),
     };

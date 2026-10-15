@@ -45,8 +45,18 @@ export type ServerMsg =
    * an anomaly shown to someone else is never sent. A morok (an anomaly that isn't there) comes
    * flagged, to its witness only: to everyone else the cycle is a clean one. A samosbor keeps the cycleId of the cycle it
    * broke out in: the cell stays, only the phase changes. `run` comes with the phase 'won'.
+   * `elapsed`: ms since the cycle began, so every client's clock of the cycle agrees.
    */
-  | { t: 'cycle'; phase: Phase; cycle: number; goal: number; cycleId: number; anomalies: { id: string; seed: number; morok?: true }[]; run?: RunStats }
+  | {
+      t: 'cycle';
+      phase: Phase;
+      cycle: number;
+      goal: number;
+      cycleId: number;
+      elapsed: number;
+      anomalies: { id: string; seed: number; morok?: true }[];
+      run?: RunStats;
+    }
   // c: cycle each position belongs to; positions from another cycle are in the other corridor
   | { t: 'pos'; list: [id: number, x: number, z: number, yaw: number, pitch: number, c: number][] }
   | { t: 'countdown'; endsIn: number; forward: number; back: number; inside: number }

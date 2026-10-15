@@ -22,6 +22,12 @@ export const SAMOSBOR_MS = 10_000;
 /** When each part of it comes, seconds from the verdict (src/samosbor.ts tells them in order). */
 export const SAMOSBOR = { warn: 0.8, fog: 2.5, flicker: 6, veil: 7.8, covered: 8.8, silence: 9.4 };
 
+/**
+ * A player is alone when nobody else in the cell stands within this many metres of them in the same
+ * room or the next one (shared/walk.ts, alone): then the alone anomalies come for them.
+ */
+export const ALONE_M = 5;
+
 /** Hardest anomaly tier allowed at a given streak. */
 export function maxDifficulty(cycle: number) {
   return cycle < 2 ? 1 : cycle < 5 ? 2 : 3;
