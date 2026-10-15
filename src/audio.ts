@@ -121,6 +121,8 @@ export class Sound {
   private readonly crackles: AudioNode[] = [];
   private tune: AudioBuffer | null = null;
   private sirenWave: PeriodicWave | null = null;
+  /** Our own breathing in the GP-5 while a samosbor lasts, made the first time it is needed. */
+  private breath: GainNode | null = null;
   /** The lingering siren's output, made the first time it is needed and left running. */
   private farSiren: GainNode | null = null;
   private tuneBack: AudioBuffer | null = null;
@@ -381,6 +383,23 @@ export class Sound {
       p.connect(this.master);
       this.squelch(at, 0.5 + r() * 0.5, 90 + r() * 70, p);
     }
+  }
+
+  /**
+   * Our own breathing through the GP-5's valve while a samosbor lasts: slow, heavy, close, under
+   * whatever we say. Plays for us only, in the middle of the head.
+   */
+  maskBreath(on: boolean) {
+    if (!this.breath && !on) return;
+    if (!this.breath) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = breathing(this.ctx);
+      src.loop = true;
+      this.breath = this.gain(0);
+      this.soft(src.connect(this.filter('bandpass', 520, 0.9))).connect(this.breath).connect(this.master);
+      src.start();
+    }
+    this.breath.gain.setTargetAtTime(on ? 0.22 : 0, this.ctx.currentTime, 0.4);
   }
 
   /**
@@ -1183,4 +1202,33 @@ function setListener(l: AudioListener, pos: V3, fwd: V3, up: V3) {
     l.setPosition(pos.x, pos.y, pos.z);
     l.setOrientation(fwd.x, fwd.y, fwd.z, up.x, up.y, up.z);
   }
+}
+
+/**
+ * One breath through a gas mask, looped: a drawn-in hiss through the filter, a click of the valve,
+ * a longer breath out. Noise from a fixed seed: the same breath every time.
+ */
+function breathing(ctx: BaseAudioContext) {
+  const len = 3.8;
+  const rate = ctx.sampleRate;
+  const buf = ctx.createBuffer(1, Math.floor(len * rate), rate);
+  const d = buf.getChannelData(0);
+  const r = rng(5150);
+  let lp = 0;
+  const shape = (t: number) => {
+    // in 0.2..1.3 s, out 1.6..3.2 s, a smooth swell each
+    const swell = (a: number, b: number) => (t > a && t < b ? Math.sin((Math.PI * (t - a)) / (b - a)) ** 2 : 0);
+    return 0.5 * swell(0.2, 1.3) + 0.35 * swell(1.6, 3.2);
+  };
+  for (let i = 0; i < d.length; i++) {
+    const t = i / rate;
+    lp += 0.25 * (r() * 2 - 1 - lp);
+    d[i] = lp * shape(t);
+  }
+  // the exhale valve opening: a small soft tick
+  for (const at of [1.6]) {
+    const s = Math.floor(at * rate);
+    for (let i = 0; i < 0.012 * rate; i++) d[s + i] += 0.25 * Math.sin(i * 0.09) * Math.exp(-i / (0.003 * rate));
+  }
+  return buf;
 }

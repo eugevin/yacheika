@@ -577,7 +577,7 @@ function accusative(name: string) {
  */
 function startSamosbor(big = false) {
   if (!world || samosbor) return;
-  samosbor = new Samosbor(world, big ? SAMOSBOR_BIG : SAMOSBOR);
+  samosbor = new Samosbor(world, big ? SAMOSBOR_BIG : SAMOSBOR, shownCycleId);
   warned = 0;
   sound?.samosbor(samosbor.times, big ? SAMOSBOR_BIG_MS : SAMOSBOR_MS);
 }
@@ -679,7 +679,7 @@ if (import.meta.env.DEV) {
       samosbor(at = 0, hold = false, big = false) {
         aftermath = 'Отклонений не было';
         startSamosbor(big);
-        for (let s = 0; s < at; s += 1 / 30) samosbor?.update(1 / 30);
+        for (let s = 0; s < at; s += 1 / 30) samosbor?.update(1 / 30, camera);
         samosborHeld = hold;
       },
       /** The cell after the last floor, around where you stand, as if the group had just won. */
@@ -774,7 +774,7 @@ renderer.setAnimationLoop((now) => {
     if (world) ownBody.light(world.probe);
   }
   if (samosbor) {
-    samosbor.update(samosborHeld ? 0 : realDt);
+    samosbor.update(samosborHeld ? 0 : realDt, camera);
     const at = [samosbor.times.warn, samosbor.times.again].filter((w) => w !== null);
     if (warned < at.length && samosbor.t >= at[warned]) {
       warned++;
@@ -785,6 +785,9 @@ renderer.setAnimationLoop((now) => {
   const lingering = world !== null && shownPhase === 'playing' && cycleMsg?.cycleId === shownCycleId;
   linger.update(realDt, lingering ? cycleTime() : 0, someoneOut || tambourAt(walker.x, walker.z) !== null, samosbor !== null || !lingering);
   sound?.distantSiren(linger.siren);
+  // a samosbor comes through the gas masks: teammates muffled, our own breath in the GP-5
+  voice?.setMuffle(samosbor !== null);
+  sound?.maskBreath(samosbor !== null && myMask === 'gp5');
   ui.veil.style.opacity = String(samosbor?.veil ?? 0);
   ui.warp.style.opacity = String(samosbor?.warp ?? 0);
   if (world) {

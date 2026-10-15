@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { FURNITURE } from '../shared/furniture.ts';
-import { DOORWAYS, VESTIBULES, doorRect, toWorld } from '../shared/map.ts';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { DOORWAYS, ROOMS, VESTIBULES, canStand, doorRect, toWorld } from '../shared/map.ts';
 import { SAMOSBOR, type SamosborTimes } from '../shared/rules.ts';
+import { eyeOf, sees } from './gaze.ts';
 import { canvasTexture, rng } from './textures.ts';
 import { NORMAL } from './world/geometry.ts';
 import { CHANNELS, DAYLIGHT } from './world/lighting.ts';
 import { VENTS } from './world/rooms/index.ts';
-import { SMOG, setSmogColor } from './world/smog.ts';
+import { SMOG, setSmogColor, smogged } from './world/smog.ts';
 import type { World } from './world/index.ts';
 
 /**
@@ -32,6 +34,14 @@ export const SMOG_RGB = [0.36, 0.2, 0.11] as const;
 
 const PUFFS = 320;
 const PUFF_LIFE = 5;
+/** Dark figures in the fog: how many, and the band of seeing distance they stand in. */
+const FIGURES = 5;
+const FIGURE_NEAR = 0.45;
+const FIGURE_FAR = 0.95;
+/** Looked at for this long, a figure is gone for good. */
+const FIGURE_SEEN = 0.2;
+/** The middle of the view: a figure there is being looked at, not glimpsed. */
+const LOOKED_AT = { h: 0.35, v: 0.45 };
 
 interface Source {
   p: THREE.Vector3;
@@ -66,8 +76,14 @@ export class Samosbor {
   private readonly daylight: THREE.Vector3;
   private readonly r = rng(1711);
   private next: number[];
+  private readonly figures: THREE.InstancedMesh;
+  /** Where each figure may stand, and how long it has been looked at (Infinity once gone). */
+  private readonly spots: { x: number; z: number; seen: number }[];
+  /** How far one can see through the fog right now, metres. */
+  private see = SEE_FROM;
 
-  constructor(world: World, times: SamosborTimes = SAMOSBOR) {
+  /** `seed`: the cycle's id, the same on every screen, so the figures stand in the same places for everyone. */
+  constructor(world: World, times: SamosborTimes = SAMOSBOR, seed = 0) {
     this.world = world;
     this.times = times;
     this.sources = sources(world, times.fog);
@@ -94,6 +110,17 @@ export class Samosbor {
     this.mesh.raycast = () => {};
     this.mesh.renderOrder = 5;
     world.group.add(this.mesh);
+
+    // the figures: one shape, instanced, each standing at a spot of the cycle's own
+    const body = new THREE.CapsuleGeometry(0.2, 1.0, 4, 10).translate(0, 0.95, 0).scale(1, 1, 0.6);
+    const head = new THREE.SphereGeometry(0.12, 10, 8).translate(0, 1.68, 0);
+    this.figures = new THREE.InstancedMesh(mergeGeometries([body, head])!, smogged(new THREE.MeshBasicMaterial({ color: 0x0e0d0c })), FIGURES);
+    body.dispose();
+    head.dispose();
+    this.figures.frustumCulled = false;
+    this.figures.raycast = () => {};
+    this.spots = figureSpots(seed);
+    world.group.add(this.figures);
     this.update(0);
   }
 
@@ -107,7 +134,8 @@ export class Samosbor {
     return THREE.MathUtils.smoothstep(this.t, this.times.flicker, this.times.covered);
   }
 
-  update(dt: number) {
+  /** `camera`: ours, for the figures that vanish once looked at. */
+  update(dt: number, camera?: THREE.Camera) {
     this.t += dt;
     const t = this.t;
     const times = this.times;
@@ -126,7 +154,7 @@ export class Samosbor {
     // the fog: seeing distance along the floor falls from 40 m to 2 m; it lies low at first, a
     // layer over the floor, and rises as it thickens
     const f = THREE.MathUtils.smoothstep(t, times.fog, times.covered) ** 1.4;
-    const see = SEE_FROM * (SEE_TO / SEE_FROM) ** f;
+    const see = (this.see = SEE_FROM * (SEE_TO / SEE_FROM) ** f);
     const per = f > 0 ? 3 / see : 0;
     SMOG.uSmogEven.value = per * 0.12;
     SMOG.uSmogFloor.value = per;
@@ -137,6 +165,30 @@ export class Samosbor {
     this.pour(t, dt);
     this.drift(dt);
     this.draw();
+    this.stand(dt, camera);
+  }
+
+  /**
+   * The figures: each shows only while it stands at the edge of what the fog lets one see, turned
+   * to us, and is gone for good once looked at straight.
+   */
+  private stand(dt: number, camera?: THREE.Camera) {
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    const eye = camera ? eyeOf(camera) : null;
+    const on = this.t >= this.times.fog + 1.5 && this.t < this.times.covered;
+    this.spots.forEach((s, i) => {
+      const d = eye ? Math.hypot(s.x - eye.x, s.z - eye.z) : 0;
+      const shown = on && eye !== null && s.seen < FIGURE_SEEN && d > 1.2 && d > this.see * FIGURE_NEAR && d < this.see * FIGURE_FAR;
+      if (shown && eye) {
+        if (sees(this.world, eye, s.x, 1.3, s.z, LOOKED_AT)) s.seen += dt;
+        q.setFromAxisAngle(up, Math.atan2(eye.x - s.x, eye.z - s.z));
+        m.compose(new THREE.Vector3(s.x, 0, s.z), q, new THREE.Vector3(1, 1, 1));
+      } else m.makeScale(0, 0, 0);
+      this.figures.setMatrixAt(i, m);
+    });
+    this.figures.instanceMatrix.needsUpdate = true;
   }
 
   /** New puffs at every source that has started, a few a second each. */
@@ -228,6 +280,20 @@ function sources(world: World, fogFrom: number): Source[] {
     add(new THREE.Vector3(b.x, 0.1, b.z), new THREE.Vector3(-f.fx, 0, -f.fz), false, fogFrom + 0.2);
   }
   return list;
+}
+
+/** Where the figures of a samosbor stand: a few free spots on the floors of the cell, picked by the seed. */
+function figureSpots(seed: number) {
+  const r = rng(seed * 7919 + 13);
+  const rooms = ROOMS.filter((room) => room.id !== 'pantry');
+  const out: { x: number; z: number; seen: number }[] = [];
+  for (let tries = 0; out.length < FIGURES && tries < 400; tries++) {
+    const room = rooms[Math.floor(r() * rooms.length)].rect;
+    const x = room.x0 + 0.4 + r() * (room.x1 - room.x0 - 0.8);
+    const z = room.z0 + 0.4 + r() * (room.z1 - room.z0 - 0.8);
+    if (canStand(x, z, 0.35)) out.push({ x, z, seen: 0 });
+  }
+  return out;
 }
 
 let puffTexture: THREE.Texture | null = null;

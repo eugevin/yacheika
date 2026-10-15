@@ -4,6 +4,11 @@ import type { RtcSignal } from '../shared/protocol.ts';
 interface Peer {
   pc: RTCPeerConnection;
   panner?: PannerNode;
+  /** The voice as it is, and through a gas mask (muffle): one of the two is open. */
+  dry?: GainNode;
+  wet?: GainNode;
+  /** The wavering of the muffled voice, stopped with the peer. */
+  lfos?: OscillatorNode[];
   /** Taps the incoming voice so avatars can show who is talking. */
   meter?: AnalyserNode;
   /** ICE candidates that arrived before the remote description. */
@@ -26,12 +31,30 @@ export class Voice {
   /** All incoming voices, for the volume slider in the duty log. */
   private readonly out: GainNode;
   private readonly signal: (to: number, data: RtcSignal) => void;
+  /** Voices come through as if from behind a gas mask, while a samosbor lasts. */
+  private muffled = false;
 
   constructor(ctx: AudioContext, signal: (to: number, data: RtcSignal) => void) {
     this.ctx = ctx;
     this.signal = signal;
     this.out = ctx.createGain();
     this.out.connect(ctx.destination);
+  }
+
+  /**
+   * While a samosbor lasts, teammates' voices come band-limited and wavering, as through a gas mask
+   * or a wall (docs/DESIGN.md, 7.1).
+   */
+  setMuffle(on: boolean) {
+    if (on === this.muffled) return;
+    this.muffled = on;
+    for (const peer of this.peers.values()) this.muffle(peer);
+  }
+
+  private muffle(peer: Peer) {
+    const t = this.ctx.currentTime;
+    peer.dry?.gain.setTargetAtTime(this.muffled ? 0 : 1, t, 0.25);
+    peer.wet?.gain.setTargetAtTime(this.muffled ? 1.6 : 0, t, 0.25);
   }
 
   setVolume(v: number) {
@@ -85,6 +108,7 @@ export class Voice {
     peer.pc.close();
     peer.panner?.disconnect();
     peer.meter?.disconnect();
+    for (const o of peer.lfos ?? []) o.stop();
     this.peers.delete(id);
   }
 
@@ -143,7 +167,26 @@ export class Voice {
         rolloffFactor: 1.3,
       });
       const source = this.ctx.createMediaStreamSource(stream);
-      source.connect(panner).connect(this.out);
+      panner.connect(this.out);
+      const ctx = this.ctx;
+      const dry = new GainNode(ctx, { gain: 1 });
+      const wet = new GainNode(ctx, { gain: 0 });
+      source.connect(dry).connect(panner);
+      // the mask: a narrow band whose top wanders, and a slow flutter in the level
+      const low = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 380, Q: 0.7 });
+      const top = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 1200, Q: 2.5 });
+      const flutter = new GainNode(ctx, { gain: 0.8 });
+      const wander = new OscillatorNode(ctx, { frequency: 0.6 });
+      wander.connect(new GainNode(ctx, { gain: 320 })).connect(top.frequency);
+      const shake = new OscillatorNode(ctx, { frequency: 3.3 });
+      shake.connect(new GainNode(ctx, { gain: 0.2 })).connect(flutter.gain);
+      wander.start();
+      shake.start();
+      source.connect(low).connect(top).connect(flutter).connect(wet).connect(panner);
+      peer.dry = dry;
+      peer.wet = wet;
+      peer.lfos = [wander, shake];
+      this.muffle(peer);
       const meter = this.ctx.createAnalyser();
       meter.fftSize = 512;
       source.connect(meter);
