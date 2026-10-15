@@ -103,7 +103,7 @@ function roomShell(parent: THREE.Object3D, room: Room, skin: Skin, holes: Hole[]
  * The inside of a doorway: two jambs, the soffit and the floor across the wall. A closed doorway
  * also gets its leaf. Exits finish with the lintel on the vestibule's side.
  */
-function doorwayShell(parent: THREE.Object3D, d: Doorway, skin: Skin, casing: THREE.Material, leaves: Leaves, far: Skin | null) {
+function doorwayShell(parent: THREE.Object3D, d: Doorway, skin: Skin, casing: THREE.Material, leaves: Leaves, far: Skin | null): THREE.Group | null {
   const r = doorRect(d);
   const alongX = doorSide(d) === 'n' || doorSide(d) === 's';
   // wallpaper stops at the edge of a doorway: a door's frame lines the whole reveal, and an opening
@@ -147,7 +147,7 @@ function doorwayShell(parent: THREE.Object3D, d: Doorway, skin: Skin, casing: TH
   sill.position.set(0, (THRESHOLD_H - 0.005) / 2, (THRESHOLD_OVER - depth - over) / 2);
   g.add(sill);
 
-  if (d.kind === 'opening') return;
+  if (d.kind === 'opening') return null;
   const thick = d.kind === 'hermo' ? 0.04 : 0.015;
   const cw = d.kind === 'hermo' ? 0.1 : CASING_W;
   // an exit's frame only shows on the room side: on the other it would sit inside the vestibule walls
@@ -177,7 +177,12 @@ function doorwayShell(parent: THREE.Object3D, d: Doorway, skin: Skin, casing: TH
     knob.userData.keep = true;
     g.add(slab);
   }
-  if (d.leaf) parent.add(doorLeaf(d, leaves));
+  if (d.leaf) {
+    const leaf = doorLeaf(d, leaves);
+    parent.add(leaf);
+    return leaf;
+  }
+  return null;
 }
 
 /** Materials of door leaves, by kind of doorway. */
@@ -285,7 +290,9 @@ export interface ShellMaterials {
 }
 
 /** Every room, doorway and window of the cell. */
+/** Builds every room, doorway and window; returns the open door leaves, each with its doorway. */
 export function buildShell(parent: THREE.Object3D, m: ShellMaterials) {
+  const doors: { d: Doorway; leaf: THREE.Group }[] = [];
   const holes = new Map(ROOMS.map((r) => [r.id, [[], [], [], []] as Hole[][]]));
   const sideIndex = { n: 0, s: 1, w: 2, e: 3 } as const;
   const addHole = (id: RoomId, side: Side, at: number, width: number, y0: number, y1: number) =>
@@ -296,7 +303,8 @@ export function buildShell(parent: THREE.Object3D, m: ShellMaterials) {
     const exit = d.b === 'back' || d.b === 'forward';
     if (!exit) addHole(d.b as RoomId, OPPOSITE[doorSide(d)], d.at, d.width, 0, d.height);
     const skin = exit ? m.vestibule : m.skins[d.a];
-    doorwayShell(parent, d, skin, d.kind === 'hermo' ? m.hermo : m.casing, m.leaves, exit ? m.vestibule : null);
+    const leaf = doorwayShell(parent, d, skin, d.kind === 'hermo' ? m.hermo : m.casing, m.leaves, exit ? m.vestibule : null);
+    if (leaf) doors.push({ d, leaf });
   }
   for (const room of ROOMS) {
     for (const w of room.windows) {
@@ -305,4 +313,5 @@ export function buildShell(parent: THREE.Object3D, m: ShellMaterials) {
     }
     roomShell(parent, room, m.skins[room.id], holes.get(room.id)!);
   }
+  return doors;
 }

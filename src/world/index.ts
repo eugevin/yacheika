@@ -1,6 +1,22 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DOORWAYS, ROOM_BY_ID, ROOMS, VESTIBULES, leafKey, leafRect, onSide, stairDepth, type Exit, type FloorKind, type RoomId, type Side, type WallKind } from '../../shared/map.ts';
+import {
+  DOORWAYS,
+  ROOM_BY_ID,
+  ROOMS,
+  VESTIBULES,
+  leafKey,
+  leafPose,
+  leafRect,
+  onSide,
+  stairDepth,
+  type Doorway,
+  type Exit,
+  type FloorKind,
+  type RoomId,
+  type Side,
+  type WallKind,
+} from '../../shared/map.ts';
 import { FURNITURE, type Piece } from '../../shared/furniture.ts';
 import type { Look } from '../character.ts';
 import type { Eye } from '../gaze.ts';
@@ -43,11 +59,28 @@ export { LAYERS } from './layers.ts';
 /**
  * A sound source placed by an anomaly; the cell itself never makes sounds like these. Steady kinds
  * (hiss, dial tone, whistle, stream, cistern, chute, tv) play all the time; the rest are events,
- * repeated with `every` or played once with `near`. Like the cell's own sources, each has a hard
+ * repeated with `every`, played once with `near`, or at once with `once`. Like the cell's own sources, each has a hard
  * range and is muffled by the walls between (audio.ts).
  */
 export interface Emitter {
-  kind: 'knock' | 'phone' | 'creak' | 'hiss' | 'dialtone' | 'whistle' | 'stream' | 'cistern' | 'chute' | 'tv' | 'drill' | 'cry' | 'pipes';
+  kind:
+    | 'knock'
+    | 'phone'
+    | 'creak'
+    | 'hiss'
+    | 'dialtone'
+    | 'whistle'
+    | 'stream'
+    | 'cistern'
+    | 'chute'
+    | 'tv'
+    | 'drill'
+    | 'cry'
+    | 'pipes'
+    | 'breath'
+    | 'shut'
+    | 'step'
+    | 'call';
   x: number;
   y: number;
   z: number;
@@ -63,6 +96,15 @@ export interface Emitter {
   gain?: number;
   /** A morok's sound: no reverb of the room, and a wall dulls only its loudness, not its top: as if heard inside the head. */
   dry?: boolean;
+  /**
+   * Plays once, as soon as it is there: for sounds an anomaly makes while the cycle goes on (pushed
+   * to World.emitters later; audio.ts picks them up on the next frame).
+   */
+  once?: boolean;
+  /** Whose name a 'call' calls. */
+  name?: string;
+  /** A teammate's recorded phrase to play instead (voice mimic); a 'call' falls back to murmuring the name. */
+  phrase?: AudioBuffer;
 }
 
 /**
@@ -114,6 +156,8 @@ export interface World {
   bakeMs: number;
   /** Furniture and things anomalies may touch, by room. */
   props: Props;
+  /** Open door leaves with their doorways (shared/map.ts), for anomalies that swing them (swingLeaf). */
+  doors: { d: Doorway; leaf: THREE.Group }[];
   /** Light at chest height over a floor point, for people and anything else that moves (lighting.ts, useBaked). */
   probe(x: number, z: number, out: Probe): Probe;
   /**
@@ -221,7 +265,7 @@ export function buildWorld(cycle: number, players: number, won = false): World {
     base: null,
     cell: 0.25,
   };
-  buildShell(group, {
+  const doors = buildShell(group, {
     skins,
     vestibule,
     casing: plain(0xd6d0c2, 0.45),
@@ -336,6 +380,7 @@ export function buildWorld(cycle: number, players: number, won = false): World {
     updaters,
     bakeMs,
     props,
+    doors,
     probe(x, z, out) {
       chest.set(x, 1.2, z);
       const v = [...light.flights, ...light.vest].find((v) => v.space.open(x, 1.2 + stairDepth(x, z), z));
@@ -625,4 +670,30 @@ function settle(group: THREE.Group, before: Map<THREE.Object3D, number[]>, chang
     group.add(merged);
     merged.updateMatrixWorld();
   }
+}
+
+/**
+ * Turns an open door leaf about its hinge: 0 stands open as built (at a right angle to the wall),
+ * 1 shut in its doorway. Its light stays what was baked for it open.
+ */
+export function swingLeaf(d: Doorway, leaf: THREE.Object3D, shut: number) {
+  const home = (leaf.userData.home ??= { x: leaf.position.x, z: leaf.position.z, yaw: leaf.rotation.y });
+  const p = leafPose(d);
+  // shut, the leaf lies along the wall from its hinge towards the other jamb
+  const along = doorSideAxis(d);
+  const cx = -d.leaf!.hinge * along.x;
+  const cz = -d.leaf!.hinge * along.z;
+  // a quarter turn one way or the other about y: (x, z) -> (s z, -s x)
+  const s = Math.sign(p.dz * cx - p.dx * cz) || 1;
+  const a = (s * Math.PI * shut) / 2;
+  const dx = home.x - p.x;
+  const dz = home.z - p.z;
+  leaf.position.set(p.x + dx * Math.cos(a) + dz * Math.sin(a), leaf.position.y, p.z - dx * Math.sin(a) + dz * Math.cos(a));
+  leaf.rotation.y = home.yaw + a;
+}
+
+/** Unit vector along a doorway's wall, towards the higher coordinate. */
+function doorSideAxis(d: Doorway) {
+  const p = leafPose(d);
+  return p.dx !== 0 ? { x: 0, z: 1 } : { x: 1, z: 0 };
 }

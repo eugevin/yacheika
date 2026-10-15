@@ -260,8 +260,9 @@ export class Room {
     if (pool.length === 0) return null;
     const a = rand(pool);
     this.recent = [...this.recent, a.id].slice(-RECENT_LIMIT);
-    const alone = a.only === 'always' || (a.only !== 'never' && Math.random() < privateChance(this.cycle, ids.length));
-    const only = alone ? rand(ids) : null;
+    // an alone anomaly goes to everyone: each screen waits for its own player to wander off
+    const secret = a.only === 'always' || (a.only !== 'never' && !a.alone && Math.random() < privateChance(this.cycle, ids.length));
+    const only = secret ? rand(ids) : null;
     return { id: a.id, name: a.name, seed: Math.floor(Math.random() * 2 ** 31), only };
   }
 

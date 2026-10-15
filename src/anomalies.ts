@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { ANOMALIES } from '../shared/anomalies.ts';
 import { FURNITURE } from '../shared/furniture.ts';
-import { ROOM_BY_ID, ROOMS, onSide, type RoomId } from '../shared/map.ts';
+import { ROOM_BY_ID, ROOMS, doorRect, inCell, onSide, roomAt, type RoomId } from '../shared/map.ts';
+import { adjacent, alone } from '../shared/walk.ts';
 import { MASKS, OUTFITS } from '../shared/masks.ts';
 import type { PlayerInfo } from '../shared/protocol.ts';
 import { Character, type Look } from './character.ts';
@@ -12,7 +13,9 @@ import { canvasTexture, rng } from './textures.ts';
 import { darkenWindows } from './world/exterior.ts';
 import { cloth } from './world/furniture.ts';
 import { INWARD, YAW } from './world/geometry.ts';
-import { LAYERS, type Lamp, type World } from './world/index.ts';
+import { STEP_LEN } from './player.ts';
+import { reachesZone } from './world/ambience.ts';
+import { LAYERS, swingLeaf, type Lamp, type World } from './world/index.ts';
 import { kelvin, useBaked, type Probe } from './world/lighting.ts';
 import { PORTRAIT_EYES, calendarSheet, carpet, notice, portrait, radioFront } from './world/pictures.ts';
 import { SEATS } from './world/rooms/kitchen.ts';
@@ -24,6 +27,11 @@ type Rand = () => number;
 export interface People {
   self: PlayerInfo;
   others: PlayerInfo[];
+  /**
+   * A phrase one of the others said, recorded on this machine only (voice.ts, the voice mimic), or
+   * null when nobody has said anything yet.
+   */
+  phrase?: (r: Rand) => { from: number; buffer: AudioBuffer } | null;
 }
 /**
  * What it changed, moved, animates or added: shimmered by a morok (morok.ts), and kept apart from
@@ -108,6 +116,36 @@ function silhouette() {
   head.position.y = 1.68;
   g.add(body, head);
   return g;
+}
+
+/** Alone for this long before an alone anomaly comes. */
+const ALONE_HOLD = 1.5;
+
+/**
+ * For the alone anomalies (shared/anomalies.ts, `alone`): waits until our player is alone in the
+ * cell (shared/walk.ts, alone; teammates as this screen sees them) for a moment, then calls `come`
+ * with where we are, once it returns true. It may return false to wait for a better moment (a door
+ * behind us, a sound that would reach an exit zone). `track` sees every frame, alone or not.
+ */
+function whenAlone(w: World, come: (eye: THREE.Vector3, cam: THREE.Camera, dt: number) => boolean, track?: (eye: THREE.Vector3) => void) {
+  const eye = V();
+  let held = 0;
+  let done = false;
+  w.updaters.push((_t, dt, cam) => {
+    cam.getWorldPosition(eye);
+    track?.(eye);
+    if (done) return;
+    const by = inCell(eye.x, eye.z) && alone(eye, w.teammates);
+    held = by ? held + dt : 0;
+    if (held >= ALONE_HOLD) done = come(eye, cam, dt);
+  });
+}
+
+/** A sound of an alone anomaly, placed now: plays at once, dry when it is a morok. */
+function cue(w: World, e: Omit<Parameters<World['emitters']['push']>[0], 'once' | 'dry'>) {
+  if (reachesZone(e.x, e.z, e.range)) return false;
+  w.emitters.push({ ...e, once: true, dry: w.morok === 'sound' });
+  return true;
 }
 
 /** How each anomaly from shared/anomalies.ts changes a freshly built cell. */
@@ -992,7 +1030,94 @@ const APPLY: Record<string, Apply> = {
   silence: (w) => {
     w.silent = true;
   },
+
+  // --- alone: only to a player with nobody near ---
+
+  alone_breath: (w) => {
+    // somebody breathes out right behind your head
+    whenAlone(w, (eye, cam) => {
+      const back = new THREE.Vector3(0, 0, 1).applyQuaternion(cam.quaternion).setY(0).normalize();
+      const p = eye.clone().addScaledVector(back, 0.45);
+      return cue(w, { kind: 'breath', x: p.x, y: eye.y + 0.05, z: p.z, range: 2.5 });
+    });
+  },
+  alone_door: (w) => {
+    // the door of the room you have just left swings shut behind you; it gives when someone comes up to it
+    const doors = w.doors.filter(({ d }) => d.kind !== 'hermo');
+    let here: RoomId | null = null;
+    let last: RoomId | null = null;
+    let shut: (typeof doors)[number] | null = null;
+    let swing = 0;
+    let open = false;
+    const me = V();
+    whenAlone(
+      w,
+      (eye, cam) => {
+        if (!here || !last) return false;
+        const door = doors.find(({ d }) => (d.a === here && d.b === last) || (d.a === last && d.b === here));
+        if (!door) return false;
+        const r = doorRect(door.d);
+        const cx = (r.x0 + r.x1) / 2;
+        const cz = (r.z0 + r.z1) / 2;
+        // behind us, a few steps off, out of sight
+        if (Math.hypot(cx - eye.x, cz - eye.z) < 1.6 || sees(w, eyeOf(cam), cx, 1.2, cz)) return false;
+        if (!cue(w, { kind: 'shut', x: cx, y: 1.2, z: cz, range: 9 })) return false;
+        shut = door;
+        return true;
+      },
+      (eye) => {
+        const room = roomAt(eye.x, eye.z)?.id ?? null;
+        if (room && room !== here) [last, here] = [here, room];
+      },
+    );
+    w.updaters.push((_t, dt, cam) => {
+      if (!shut) return;
+      const r = doorRect(shut.d);
+      const [cx, cz] = [(r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2];
+      const near = [cam.getWorldPosition(me), ...w.teammates].some((p) => Math.hypot(p.x - cx, p.z - cz) < 0.9);
+      if (near && !open && swing > 0.9) {
+        open = true;
+        cue(w, { kind: 'creak', x: cx, y: 1.2, z: cz, range: 6 });
+      }
+      swing = THREE.MathUtils.clamp(swing + (open ? -dt / 0.5 : dt / 1.1), 0, 1);
+      swingLeaf(shut.d, shut.leaf, THREE.MathUtils.smoothstep(swing, 0, 1) * 0.97);
+    });
+    return doors.map(({ leaf }) => leaf);
+  },
+  alone_call: (w, r, _c, people) => {
+    // your name, from the next room: a teammate's voice the cell took, or a murmur saying it
+    const said = people.phrase?.(r) ?? null;
+    whenAlone(w, (eye) => {
+      const mine = roomAt(eye.x, eye.z)?.id;
+      if (!mine) return false;
+      const next = ROOMS.filter((room) => room.id !== 'pantry' && room.id !== mine && adjacent(room.id, mine));
+      const empty = next.filter((room) => !w.teammates.some((t) => roomAt(t.x, t.z)?.id === room.id));
+      const room = pick(empty.length ? empty : next, r);
+      if (!room) return false;
+      const x = (room.rect.x0 + room.rect.x1) / 2;
+      const z = (room.rect.z0 + room.rect.z1) / 2;
+      return cue(w, { kind: 'call', x, y: 1.6, z, range: 9, gain: 1.4, name: people.self.name, phrase: said?.buffer });
+    });
+  },
+  alone_steps: (w) => {
+    // a few steps behind you, keeping step with yours, and they stop when you do
+    let steps = 0;
+    let walked = 0;
+    const was = V();
+    whenAlone(w, (eye, cam) => {
+      if (was.lengthSq() === 0) was.copy(eye);
+      walked += Math.hypot(eye.x - was.x, eye.z - was.z);
+      was.copy(eye);
+      if (walked < STEP_LEN) return false;
+      walked -= STEP_LEN;
+      const back = new THREE.Vector3(0, 0, 1).applyQuaternion(cam.quaternion).setY(0).normalize();
+      const p = eye.clone().addScaledVector(back, 3);
+      if (inCell(p.x, p.z) && cue(w, { kind: 'step', x: p.x, y: 0.05, z: p.z, range: 8 })) steps++;
+      return steps >= 9;
+    });
+  },
 };
+
 
 // Every catalogued anomaly must have an implementation; fail loudly during development.
 for (const a of ANOMALIES) if (!APPLY[a.id]) console.error(`anomaly "${a.id}" has no implementation`);

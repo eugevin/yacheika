@@ -20,6 +20,11 @@ export interface AnomalyInfo {
    * changes: what takes something away, and what is made of light, is never one.
    */
   morok?: 'sight' | 'sound';
+  /**
+   * Comes only to a player with nobody near (shared/walk.ts, alone): sent to everyone, never private,
+   * and each screen holds it back until its own player is alone, then plays it once.
+   */
+  alone?: true;
 }
 
 export const ANOMALIES: AnomalyInfo[] = [
@@ -89,4 +94,9 @@ export const ANOMALIES: AnomalyInfo[] = [
   { id: 'drill', name: 'Соседи сверлят', tier: 1, morok: 'sound' },
   { id: 'crying', name: 'Плач за стеной', tier: 2, morok: 'sound' },
   { id: 'silence', name: 'Тишина', tier: 3 },
+  // alone: only to whoever wanders off
+  { id: 'alone_breath', name: 'Дыхание за спиной', tier: 2, alone: true, morok: 'sound' },
+  { id: 'alone_door', name: 'Дверь закрылась за спиной', tier: 2, alone: true },
+  { id: 'alone_call', name: 'Зовут из соседней комнаты', tier: 3, alone: true, morok: 'sound' },
+  { id: 'alone_steps', name: 'Шаги, когда ты один', tier: 2, alone: true, morok: 'sound' },
 ];

@@ -260,8 +260,14 @@ export class Sound {
       for (const p of v.patterns) this.schedule(p, now, running);
     }
 
+    // sounds an anomaly makes as the cycle goes on: new emitters get their voices now
+    while (this.emitters.length < w.emitters.length) this.emitters.push(this.emitterVoice(w.emitters[this.emitters.length]));
     for (const v of this.emitters) {
       if (moved) this.muffle(v.wall, t);
+      if (v.e.once && !v.done && running) {
+        v.done = true;
+        v.play?.(t, 0);
+      }
       for (const p of v.patterns) this.schedule(p, now, running);
       const e = v.e;
       if (e.near !== undefined && !v.done && running && Math.hypot(x - e.x, z - e.z) < e.near) {
@@ -858,6 +864,44 @@ export class Sound {
         this.osc('sine', 50, v).connect(this.gain(0.008)).connect(out);
         break;
       }
+      case 'breath':
+        v.play = (t) => {
+          // a slow breath out right behind the head, and the start of the next one in
+          for (const [at, attack, hold, dur, gain, freq] of [[0, 0.35, 0.6, 0.9, 0.1, 650], [2.1, 0.5, 0.5, 0.4, 0.05, 1000]]) {
+            const src = ctx.createBufferSource();
+            src.buffer = this.noise;
+            const g = envelope(ctx, t + at, attack, dur, gain, hold);
+            this.soft(src.connect(this.filter('bandpass', freq, 0.8))).connect(g).connect(out);
+            src.start(t + at, 0.3, attack + hold + dur + 0.1);
+          }
+        };
+        break;
+      case 'shut':
+        v.play = (t) => {
+          // a door swinging to: its hinges complaining, then the latch
+          this.creak(t, 0.1, 1.1, out);
+          this.creak(t + 0.35, 0.08, 0.9, out);
+          this.thump(t + 0.9, 95, 0.1, 0.2, out);
+          this.burst(t + 0.9, 0.04, 0.12, 1300, 3, 'bandpass', out, 0.002, null);
+        };
+        break;
+      case 'step':
+        v.play = (t) => this.footfall(t, STEP_GAIN, out, footingAt(e.x, e.z), false, e.dry ? null : this.room);
+        break;
+      case 'call':
+        v.play = (t) => {
+          if (e.phrase) {
+            const src = ctx.createBufferSource();
+            src.buffer = e.phrase;
+            src.connect(this.filter('highpass', 200, 0.7)).connect(this.filter('lowpass', 3000, 0.7)).connect(out);
+            src.start(t);
+            return;
+          }
+          // someone the other side of the wall saying the name twice, as on the radio
+          const name = e.name || 'жилец';
+          this.announce(t, [name, name], out, null, 0.19, 0.9, 0.35);
+        };
+        break;
       case 'knock':
         v.play = (t) => {
           // three knuckle knocks, the last a little softer
@@ -1173,6 +1217,8 @@ const VOWELS: Record<string, [number, number]> = Object.fromEntries(
 /** Gain envelope: soft linear attack, optional hold, exponential release. */
 function envelope(ctx: AudioContext, t: number, attack: number, dur: number, gain: number, hold = 0) {
   const g = ctx.createGain();
+  // shut until it starts: whatever plays into it early stays silent
+  g.gain.value = 0;
   g.gain.setValueAtTime(0, t);
   g.gain.linearRampToValueAtTime(gain, t + attack);
   if (hold > 0) g.gain.setValueAtTime(gain, t + attack + hold);
