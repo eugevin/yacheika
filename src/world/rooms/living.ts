@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ROOM_BY_ID } from '../../../shared/map.ts';
 import { canvasTexture, rng } from '../../textures.ts';
 import { flat, quad } from '../geometry.ts';
-import { Kit, cabinet, cloth, keep, legs, radiator } from '../furniture.ts';
+import { Kit, cabinet, cloth, keep, live, legs, radiator } from '../furniture.ts';
 import { surfaces } from '../surfaces.ts';
 import { carpet, clockDial, deadScreen, portrait } from '../pictures.ts';
 import type { Updater } from './index.ts';
@@ -140,14 +140,14 @@ export function furnishLiving(root: THREE.Object3D, updaters: Updater[]): Living
   seconds.position.set(0, 0.6, 0.1275);
   seconds.rotation.z = -1.2;
   cg.add(seconds);
-  keep(seconds);
+  live(seconds);
   const pendulum = new THREE.Group();
   pendulum.position.set(0, 0.48, 0.09);
   cg.add(pendulum);
   k.cyl(pendulum, 0.004, 0.3, k.mat('brass'), 0, -0.3, 0, 4);
   const bob = k.cyl(pendulum, 0.04, 0.008, k.mat('brass'), 0, -0.34, 0, 16);
   bob.rotation.x = Math.PI / 2;
-  keep(pendulum);
+  live(pendulum);
   const clock = { running: true };
   updaters.push((t) => {
     if (!clock.running) return;

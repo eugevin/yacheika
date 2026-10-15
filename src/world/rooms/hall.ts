@@ -3,7 +3,7 @@ import type { Reflector } from 'three/addons/objects/Reflector.js';
 import { ROOM_BY_ID } from '../../../shared/map.ts';
 import { rng } from '../../textures.ts';
 import { LAYERS } from '../layers.ts';
-import { Kit, cabinet, keep } from '../furniture.ts';
+import { Kit, cabinet, keep, live } from '../furniture.ts';
 import { realMirror } from '../mirror.ts';
 import type { Updater } from './index.ts';
 
@@ -94,7 +94,7 @@ export function furnishHall(root: THREE.Object3D, players: number, updaters: Upd
   meterDisk.rotation.x = Math.PI / 2;
   // the red mark on the rim shows which way the disk turns
   k.box(meterDisk, 0.012, 0.0045, 0.006, k.paint(0x8a1a14, 0.5), 0, -0.00025, 0.039);
-  keep(meterDisk);
+  live(meterDisk);
   const meterState = { dir: 1 };
   updaters.push((_t, dt) => (meterDisk.rotation.y += dt * 1.2 * meterState.dir));
 

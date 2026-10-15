@@ -150,11 +150,20 @@ export class Kit {
   }
 }
 
-/** Marks an object (and everything in it) as touched by anomalies: it won't be merged away. */
+/**
+ * Marks an object (and everything in it) as touched by anomalies: it isn't merged with the rest
+ * when the cell is built, only once the cycle's anomaly has left it alone (world/index.ts, settle).
+ */
 export function keep<T extends THREE.Object3D>(o: T): T {
   o.userData.keepRoot = true;
   o.traverse((c) => (c.userData.keep = true));
   return o;
+}
+
+/** Kept apart for good: something the cell itself moves every frame (the clock, the meter's disk). */
+export function live<T extends THREE.Object3D>(o: T): T {
+  o.userData.live = true;
+  return keep(o);
 }
 
 // --- common pieces ---

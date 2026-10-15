@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GALLERY_SKIN, LEG1, LEG2, MID, MID_CENTER, VEST_H, VESTIBULES, ZONE } from '../../shared/map.ts';
 import { canvasTexture } from '../textures.ts';
 import { box, flat } from './geometry.ts';
@@ -148,26 +149,44 @@ function hatching() {
 const Y = new THREE.Vector3(0, 1, 0);
 const ONE = new THREE.Vector3(1, 1, 1);
 
-/** Every mesh of a template, drawn once per placement. The first placement is the one baked. */
+/**
+ * Every mesh of a template, drawn once per placement, merged by material first (the dead end apart,
+ * to be hidden) so the whole template is a few draw calls. The first placement is the one baked.
+ */
 function instance(parent: THREE.Object3D, template: THREE.Object3D, placements: THREE.Matrix4[]) {
   template.updateMatrixWorld(true);
-  const list: THREE.InstancedMesh[] = [];
+  const parts = new Map<string, THREE.Mesh[]>();
+  const ids = new Map<THREE.Material, number>();
   template.traverse((o) => {
     if (!(o instanceof THREE.Mesh)) return;
-    const im = new THREE.InstancedMesh(o.geometry, o.material, placements.length);
-    const world = placements.map((p) => new THREE.Matrix4().multiplyMatrices(p, o.matrixWorld));
-    world.forEach((w, i) => im.setMatrixAt(i, w));
-    im.userData.placements = world;
-    im.userData.bakeMatrix = world[0];
-    im.userData.vestibule = 'back';
-    im.userData.deadEnd = !!o.userData.deadEnd;
-    // the instances are far apart; one bounding sphere around the template would cull wrongly
-    im.frustumCulled = false;
-    im.matrixAutoUpdate = false;
-    im.matrixWorldAutoUpdate = false;
-    parent.add(im);
-    list.push(im);
+    const m = o.material as THREE.Material;
+    if (!ids.has(m)) ids.set(m, ids.size);
+    const key = `${ids.get(m)}${o.userData.deadEnd ? 'end' : ''}`;
+    parts.set(key, [...(parts.get(key) ?? []), o]);
   });
+  const list: THREE.InstancedMesh[] = [];
+  for (const meshes of parts.values()) {
+    const geos = meshes.map((o) => o.geometry.clone().applyMatrix4(o.matrixWorld));
+    // pieces that can't be merged (differing attributes) stay one per mesh
+    const merged = geos.length > 1 ? mergeGeometries(geos) : geos[0];
+    const groups = merged ? [{ geo: merged, from: meshes[0] }] : geos.map((geo, i) => ({ geo, from: meshes[i] }));
+    if (merged && merged !== geos[0]) for (const g of geos) g.dispose();
+    for (const { geo, from } of groups) {
+      const im = new THREE.InstancedMesh(geo, from.material, placements.length);
+      const world = placements.map((p) => p.clone());
+      world.forEach((w, i) => im.setMatrixAt(i, w));
+      im.userData.placements = world;
+      im.userData.bakeMatrix = world[0];
+      im.userData.vestibule = 'back';
+      im.userData.deadEnd = !!from.userData.deadEnd;
+      // the instances are far apart; one bounding sphere around the template would cull wrongly
+      im.frustumCulled = false;
+      im.matrixAutoUpdate = false;
+      im.matrixWorldAutoUpdate = false;
+      parent.add(im);
+      list.push(im);
+    }
+  }
   return list;
 }
 

@@ -574,7 +574,8 @@ function enterCycle(msg: Extract<ServerMsg, { t: 'cycle' }>, mode: 'loop' | 'sta
   walker.stairs = world.won;
   run = msg.run ?? null;
   const people: People = { self: { id: myId, name: ui.name.value.trim() || 'вы', color: myColor(), mask: myMask, outfit: myOutfit, flat: myFlat }, others: avatars.all };
-  for (const a of msg.anomalies) applyAnomaly(world, a.id, a.seed, msg.cycle, people, a.morok === true);
+  const changed = msg.anomalies.flatMap((a) => applyAnomaly(world!, a.id, a.seed, msg.cycle, people, a.morok === true));
+  world.settle(changed);
   scene.add(world.group);
   // Compile whatever new shaders the cell needs now, in the background where the browser can:
   // compiled on first sight, an anomaly would stall the frame you first look at it.

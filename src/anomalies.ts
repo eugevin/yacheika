@@ -25,7 +25,10 @@ export interface People {
   self: PlayerInfo;
   others: PlayerInfo[];
 }
-/** What it changed or added, for the shimmer of a morok (morok.ts); a sound-only anomaly returns nothing. */
+/**
+ * What it changed, moved, animates or added: shimmered by a morok (morok.ts), and kept apart from
+ * the cell's merged meshes (World.settle). A sound-only anomaly that touches nothing returns nothing.
+ */
 type Apply = (w: World, r: Rand, cycle: number, people: People) => THREE.Object3D[] | void;
 
 const pick = <T>(list: readonly T[], r: Rand) => list[Math.floor(r() * list.length)];
@@ -155,6 +158,7 @@ const APPLY: Record<string, Apply> = {
     });
     const p = worldAt(hatch);
     w.emitters.push({ kind: 'chute', x: p.x, y: p.y, z: p.z, range: 7 });
+    return [hatch];
   },
   lamp_broken: (w, r) => {
     // a dead corridor bulb and its glass on the floor under it
@@ -431,7 +435,7 @@ const APPLY: Record<string, Apply> = {
     const shape = silhouette();
     shape.position.set(22.62, 0.08, 7.35);
     w.group.add(c, shape);
-    return [c, shape];
+    return [old, c, shape];
   },
   mirror_writing: (w) => {
     // "you have been here before", written with a finger on the steamed-up mirror
@@ -541,7 +545,9 @@ const APPLY: Record<string, Apply> = {
     return [screen];
   },
   crystal_gone: (w, r) => {
-    pick(w.props.living.crystal, r).visible = false;
+    const set = pick(w.props.living.crystal, r);
+    set.visible = false;
+    return [set];
   },
   chandelier_swing: (w) => {
     // the chandelier swings slowly on its hook, its light breathing with it, the hook creaking
@@ -660,7 +666,7 @@ const APPLY: Record<string, Apply> = {
     dent.rotation.x = -Math.PI / 2;
     dent.position.set(20.02, 0.642, 10.66);
     w.group.add(dent);
-    return [heap, dent];
+    return [spread, heap, dent];
   },
   cot_rocking: (w) => {
     const cot = w.props.bedroom.cot;
@@ -996,13 +1002,13 @@ for (const a of ANOMALIES) if (!APPLY[a.id]) console.error(`anomaly "${a.id}" ha
  * is the same anomaly with its tell: one seen shimmers and makes no sound and no light, one heard
  * plays dry.
  */
-export function applyAnomaly(w: World, id: string, seed: number, cycle: number, people: People, morok = false) {
-  if (!APPLY[id]) return;
+export function applyAnomaly(w: World, id: string, seed: number, cycle: number, people: People, morok = false): THREE.Object3D[] {
+  if (!APPLY[id]) return [];
   w.anomaly = id;
   const kind = morok ? ANOMALIES.find((a) => a.id === id)?.morok : undefined;
   if (morok && !kind) {
     if (import.meta.env.DEV) console.error(`anomaly "${id}" can't be a morok`);
-    return;
+    return [];
   }
   w.morok = kind ?? null;
   const emitters = w.emitters.length;
@@ -1016,4 +1022,5 @@ export function applyAnomaly(w: World, id: string, seed: number, cycle: number, 
     for (const e of w.emitters) e.dry = true;
     for (const a of w.ambience) if (a.reversed || a.announce) a.dry = true;
   }
+  return changed;
 }

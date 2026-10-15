@@ -122,6 +122,11 @@ export interface World {
    * and for a line that leaves them. For who can see what (gaze.ts).
    */
   clear(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean;
+  /**
+   * Called once the cycle's anomaly is applied, with what it changed: whatever it left alone joins
+   * the cell's own meshes, to save draw calls (settle). Nothing kept apart can be moved after this.
+   */
+  settle(changed: THREE.Object3D[]): void;
   /** High quality shows the mirrors' real reflections (mirror.ts); low leaves the glass under them (and `props.hall.mirror.ghost`, if any). */
   setQuality(high: boolean): void;
   dispose(): void;
@@ -310,6 +315,7 @@ export function buildWorld(cycle: number, players: number, won = false): World {
     for (const [view, layer] of MIRROR_VIEWS) if (bounds.intersectsBox(view)) o.layers.enable(layer);
   });
   const mirrors = [props.hall.mirror.reflector, props.bath.reflector, props.bedroom.reflector];
+  const built = snapshot(group);
   const light = lightContext(lamps, stairLamps);
   const chest = new THREE.Vector3();
 
@@ -337,6 +343,7 @@ export function buildWorld(cycle: number, players: number, won = false): World {
       return v ? gather(v.space, v.lamps, [], chest, null, out) : gather(light.cell, light.cellLamps, light.windows, chest, null, out);
     },
     clear: (ax, ay, az, bx, by, bz) => light.cell.open(ax, ay, az) && light.cell.clear(ax, ay, az, bx, by, bz),
+    settle: (changed) => settle(group, built, changed),
     setQuality(high) {
       for (const r of mirrors) r.visible = high;
       const m = props.hall.mirror;
@@ -508,11 +515,14 @@ function merge(group: THREE.Group) {
     walk(unit);
     inv.copy(unit.matrixWorld).invert();
     for (const [mat, list] of byMat) {
+      // the cell's own meshes take in what no anomaly touched, once the cycle's anomaly is applied (settle)
+      if (unit === group) for (const m of list) m.userData.cell = true;
       if (list.length < 2) continue;
       const geos = list.map((m) => m.geometry.clone().applyMatrix4(rel.multiplyMatrices(inv, m.matrixWorld)));
       const merged = new THREE.Mesh(mergeGeometries(geos), mat);
       merged.renderOrder = list[0].renderOrder;
       merged.userData.keep = unit !== group;
+      merged.userData.cell = unit === group;
       for (const g of geos) g.dispose();
       for (const m of list) {
         m.removeFromParent();
@@ -521,5 +531,98 @@ function merge(group: THREE.Group) {
       unit.add(merged);
       merged.updateMatrixWorld();
     }
+  }
+}
+
+/** Kept units (merge) that anomalies may touch, each with the meshes that are its own and not a nested unit's. */
+function keptUnits(group: THREE.Group) {
+  const isUnit = (o: THREE.Object3D) => o !== group && (o.userData.keepRoot || o.name);
+  const units = new Map<THREE.Object3D, THREE.Mesh[]>();
+  group.traverse((o) => {
+    if (!isUnit(o) || !o.userData.keep) return;
+    const own: THREE.Mesh[] = [];
+    const walk = (c: THREE.Object3D) => {
+      if (c !== o && isUnit(c)) return;
+      if (c instanceof THREE.Mesh) own.push(c);
+      for (const k of c.children) walk(k);
+    };
+    walk(o);
+    units.set(o, own);
+  });
+  return units;
+}
+
+/** Where a kept unit and everything in it stand and whether they show, to tell what an anomaly has changed. */
+function pose(unit: THREE.Object3D) {
+  const out: number[] = [];
+  unit.traverse((o) => out.push(o.visible ? 1 : 0, o.children.length, ...o.matrixWorld.elements));
+  return out;
+}
+
+function snapshot(group: THREE.Group) {
+  group.updateMatrixWorld(true);
+  return new Map([...keptUnits(group).keys()].map((u) => [u, pose(u)]));
+}
+
+const related = (a: THREE.Object3D, b: THREE.Object3D) => {
+  for (let o: THREE.Object3D | null = a; o; o = o.parent) if (o === b) return true;
+  for (let o: THREE.Object3D | null = b; o; o = o.parent) if (o === a) return true;
+  return false;
+};
+
+/**
+ * Once the cycle's anomaly is applied, everything kept apart for anomalies that this one left alone
+ * goes into the cell's own meshes, material by material: a neighbour's door or a burner nobody
+ * touches costs no draw call of its own. What the anomaly changed (`changed`, and whatever moved
+ * or appeared or vanished since the build, `before`), what moves by itself (`userData.live`) and the
+ * mirrors stay apart. Hidden meshes stay where they are: they cost nothing.
+ */
+function settle(group: THREE.Group, before: Map<THREE.Object3D, number[]>, changed: THREE.Object3D[]) {
+  group.updateMatrixWorld(true);
+  const shown = (o: THREE.Object3D) => {
+    for (let p: THREE.Object3D | null = o; p && p !== group; p = p.parent) if (!p.visible) return false;
+    return true;
+  };
+  const byMat = new Map<THREE.Material, THREE.Mesh[]>();
+  for (const [unit, own] of keptUnits(group)) {
+    const was = before.get(unit);
+    const now = pose(unit);
+    const moved = !was || was.length !== now.length || was.some((v, i) => v !== now[i]);
+    const told = changed.some((c) => related(c, unit));
+    let fixed = true;
+    unit.traverse((o) => {
+      if (o.userData.live || o.userData.mirror || o instanceof THREE.InstancedMesh) fixed = false;
+    });
+    for (let p = unit.parent; p && p !== group; p = p.parent) if (p.userData.live) fixed = false;
+    if (import.meta.env.DEV && fixed && moved && !told) console.error('an anomaly changed a kept object without returning it', unit);
+    if (!fixed || moved || told) continue;
+    for (const m of own) if (shown(m)) byMat.set(m.material as THREE.Material, [...(byMat.get(m.material as THREE.Material) ?? []), m]);
+  }
+  if (!byMat.size) return;
+  const hosts = new Map<THREE.Material, THREE.Mesh[]>();
+  group.traverse((o) => {
+    if (o instanceof THREE.Mesh && o.userData.cell && byMat.has(o.material as THREE.Material)) hosts.set(o.material as THREE.Material, [...(hosts.get(o.material as THREE.Material) ?? []), o]);
+  });
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const rel = new THREE.Matrix4();
+  for (const [mat, guests] of byMat) {
+    const list = [...(hosts.get(mat) ?? []), ...guests];
+    if (list.length < 2) continue;
+    const geos = list.map((m) => m.geometry.clone().applyMatrix4(rel.multiplyMatrices(inv, m.matrixWorld)));
+    const geo = mergeGeometries(geos);
+    for (const g of geos) g.dispose();
+    // differing attributes (an indexed box and a loose one): those stay as they are
+    if (!geo) continue;
+    const merged = new THREE.Mesh(geo, mat);
+    merged.renderOrder = list[0].renderOrder;
+    merged.userData.cell = true;
+    merged.layers.mask = 0;
+    for (const m of list) {
+      merged.layers.mask |= m.layers.mask;
+      m.removeFromParent();
+      m.geometry.dispose();
+    }
+    group.add(merged);
+    merged.updateMatrixWorld();
   }
 }
